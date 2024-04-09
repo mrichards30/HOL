@@ -68,26 +68,66 @@ end
     This invariant is enforced if we always use mk_clos instead of Clos.
  ---------------------------------------------------------------------------*)
 
+(*---------------------------------------------------------------------------
+     Support for efficient sets of variables
+ ---------------------------------------------------------------------------*)
+
+fun var_compare (Fv(s1,ty1), Fv(s2,ty2)) =
+    (case String.compare (s1,s2)
+         of EQUAL => Type.compare (ty1,ty2)
+          | x => x)
+  | var_compare _ = raise ERR "var_compare" "variables required";
+
+val empty_varset = HOLset.empty var_compare
+                                
 fun mk_clos (s, Bv i) =
-      (case (Subst.exp_rel(s,i))
-        of (0, SOME t) => t
-         | (k, SOME t) => mk_clos (Subst.shift(k,Subst.id), t)
-         | (v, NONE)   => Bv v)
-  | mk_clos (s, t as Fv _)     = t
-  | mk_clos (s, t as Const _)  = t
-  | mk_clos (s,Clos(Env,Body)) = Clos(Subst.comp mk_clos (s,Env), Body)
-  | mk_clos (s,t)              = Clos(s, t)
-;
+     (case (Subst.exp_rel(s,i))
+           of (0, SOME t) => t
+              | (k, SOME t) => mk_clos (Subst.shift(k,Subst.id), t)
+              | (v, NONE)   => Bv v)
+     | mk_clos (s, t as Fv _)     = t
+     | mk_clos (s, t as Const _)  = t
+     | mk_clos (s,t)              = Clos(s, t, compute_clos_free_vars s t)
+
+and push_clos (Clos(E, Comb(f,x,_), Fvs)) = Comb(mk_clos(E,f), mk_clos(E,x), Fvs)
+     | push_clos (Clos(E, Abs(v,M,_), Fvs))  = Abs(v, mk_clos (Subst.lift(1,E),M),Fvs)
+     | push_clos _ = raise ERR "push_clos" "not a subst"
+                           
+and is_bv0_present t = let
+    fun BVs (v as Bv i) offset = (offset = i)
+      | BVs (v as Fv _) offset = false
+      | BVs (v as Abs(_,Body,_)) offset = BVs Body (offset + 1)
+      | BVs (Comb(lhs,rhs,_)) offset = BVs lhs offset orelse BVs rhs offset
+      | BVs (v as Clos _) offset = BVs (push_clos v) offset
+in BVs t 0
+end
+
+and compute_clos_free_vars s body = let
+    val body_fvs = free_vars_set body
+    val sub_fvs = if is_bv0_present body
+                  then Option.map free_vars_set (snd (Subst.exp_rel(s, 0)))
+                  else NONE
+in case sub_fvs of
+       NONE => body_fvs
+     | SOME fvs => HOLset.union (body_fvs, fvs) 
+end
+
+and free_vars_set (v as Fv _) = HOLset.add (empty_varset, v)
+  | free_vars_set (v as Bv _)           = empty_varset
+  | free_vars_set (Comb(f,x,Fvs))       = Fvs
+  | free_vars_set (Abs(_,Body,Fvs))     = Fvs
+  | free_vars_set (t as Clos _)         = free_vars_set (push_clos t);
+                                   
+end;;
+
+val free_vars = free_vars_set o HOLset.listItems;
 
 (*---------------------------------------------------------------------------
     Propagate substitutions so that we are sure the head of the term is
     not a delayed substitution.
  ---------------------------------------------------------------------------*)
 
-fun push_clos (Clos(E, Comb(f,x))) = Comb(mk_clos(E,f), mk_clos(E,x))
-  | push_clos (Clos(E, Abs(v,M)))  = Abs(v, mk_clos (Subst.lift(1,E),M))
-  | push_clos _ = raise ERR "push_clos" "not a subst"
-;
+
 
 (*---------------------------------------------------------------------------*
  * Computing the type of a term.                                             *
@@ -116,8 +156,8 @@ end;
 fun is_bvar (Bv _)    = true | is_bvar _  = false;
 fun is_var  (Fv _)    = true | is_var _   = false;
 fun is_const(Const _) = true | is_const _ = false;
-fun is_comb(Comb _) = true | is_comb(Clos(_,Comb _)) = true | is_comb _ = false
-fun is_abs(Abs _) = true | is_abs(Clos(_,Abs _)) = true | is_abs _ = false;
+fun is_comb(Comb _) = true | is_comb(Clos(_,Comb _, _)) = true | is_comb _ = false
+fun is_abs(Abs _) = true | is_abs(Clos(_,Abs _, _)) = true | is_abs _ = false;
 
 
 (*---------------------------------------------------------------------------*
@@ -128,9 +168,9 @@ local fun tyV (Fv(_,Ty)) k         = k (Type.type_vars Ty)
         | tyV (Bv _) k             = k []
         | tyV (Const(_,GRND _)) k  = k []
         | tyV (Const(_,POLY Ty)) k = k (Type.type_vars Ty)
-        | tyV (Comb(Rator,Rand)) k = tyV Rand (fn q1 =>
+        | tyV (Comb(Rator,Rand,Fvs)) k = tyV Rand (fn q1 =>
                                      tyV Rator(fn q2 => k (union q2 q1)))
-        | tyV (Abs(Bvar,Body)) k   = tyV Body (fn q1 =>
+        | tyV (Abs(Bvar,Body,Fvs)) k   = tyV Body (fn q1 =>
                                      tyV Bvar (fn q2 => k (union q2 q1)))
         | tyV (t as Clos _) k      = tyV (push_clos t) k
 in
@@ -141,15 +181,6 @@ end;
  * The free variables of a lambda term. Tail recursive (from Ken Larsen).    *
  *---------------------------------------------------------------------------*)
 
-local fun FV (v as Fv _) A k   = k (Lib.insert v A)
-        | FV (Comb(f,x)) A k   = FV f A (fn q => FV x q k)
-        | FV (Abs(_,Body)) A k = FV Body A k
-        | FV (t as Clos _) A k = FV (push_clos t) A k
-        | FV _ A k = k A
-in
-fun free_vars tm = FV tm [] Lib.I
-end;
-
 (*---------------------------------------------------------------------------*
  * The free variables of a lambda term, in textual order.                    *
  *---------------------------------------------------------------------------*)
@@ -158,8 +189,8 @@ fun free_vars_lr tm =
   let fun FV ((v as Fv _)::t) A   = FV t (Lib.insert v A)
         | FV (Bv _::t) A          = FV t A
         | FV (Const _::t) A       = FV t A
-        | FV (Comb(M,N)::t) A     = FV (M::N::t) A
-        | FV (Abs(_,M)::t) A      = FV (M::t) A
+        | FV (Comb(M,N,_)::t) A     = FV (M::N::t) A
+        | FV (Abs(_,M,_)::t) A      = FV (M::t) A
         | FV ((M as Clos _)::t) A = FV (push_clos M::t) A
         | FV [] A = rev A
   in
@@ -171,8 +202,8 @@ fun free_vars_lr tm =
  *---------------------------------------------------------------------------*)
 
 local fun vars (v as Fv _) A        = Lib.insert v A
-        | vars (Comb(Rator,Rand)) A = vars Rand (vars Rator A)
-        | vars (Abs(Bvar,Body)) A   = vars Body (vars Bvar A)
+        | vars (Comb(Rator,Rand,_)) A = vars Rand (vars Rator A)
+        | vars (Abs(Bvar,Body,_)) A   = vars Body (vars Bvar A)
         | vars (t as Clos _) A      = vars (push_clos t) A
         | vars _ A = A
 in
@@ -181,18 +212,6 @@ end;
 
 fun free_varsl tm_list = itlist (union o free_vars) tm_list []
 fun all_varsl tm_list  = itlist (union o all_vars) tm_list [];
-
-(*---------------------------------------------------------------------------
-     Support for efficient sets of variables
- ---------------------------------------------------------------------------*)
-
-fun var_compare (Fv(s1,ty1), Fv(s2,ty2)) =
-       (case String.compare (s1,s2)
-         of EQUAL => Type.compare (ty1,ty2)
-          | x => x)
-  | var_compare _ = raise ERR "var_compare" "variables required";
-
-val empty_varset = HOLset.empty var_compare
 
 (* ----------------------------------------------------------------------
     A total ordering on terms that respects alpha equivalence.
@@ -219,13 +238,13 @@ fun compare (p as (t1,t2)) =
                                                             to_hol_type ty2)
                                    | x => x)
     | (Const _, _)           => LESS
-    | (Comb(M,N),Comb(P,Q))  => (case compare (M,P)
+    | (Comb(M,N,_),Comb(P,Q,_))  => (case compare (M,P)
                                   of EQUAL => compare (N,Q)
                                    | x => x)
     | (Comb _, Abs _)        => LESS
     | (Comb _, _)            => GREATER
-    | (Abs(Fv(_, ty1),M),
-       Abs(Fv(_, ty2),N))    => (case Type.compare(ty1,ty2)
+    | (Abs(Fv(_, ty1),M,_),
+       Abs(Fv(_, ty2),N,_))    => (case Type.compare(ty1,ty2)
                                   of EQUAL => compare (M,N)
                                    | x => x)
     | (Abs _, _)             => GREATER;
@@ -248,8 +267,8 @@ fun all_atomsl tlist A =
           case t of
               Fv _ => all_atomsl ts (HOLset.add(A,t))
             | Const _ => all_atomsl ts (HOLset.add(A,t))
-            | Comb(Rator,Rand) => all_atomsl (Rator::Rand::ts) A
-            | Abs(v,body) => all_atomsl (body::ts) (HOLset.add(A,v))
+            | Comb(Rator,Rand,_) => all_atomsl (Rator::Rand::ts) A
+            | Abs(v,body,_) => all_atomsl (body::ts) (HOLset.add(A,v))
             | Clos _ => all_atomsl (push_clos t::ts) A
             | Bv _ => all_atomsl ts A
         end
@@ -263,7 +282,7 @@ fun all_atoms t = all_atomsl [t] empty_tmset
 fun FVL [] A = A
   | FVL ((v as Fv _)::rst) A      = FVL rst (HOLset.add(A,v))
   | FVL (Comb(Rator,Rand)::rst) A = FVL (Rator::Rand::rst) A
-  | FVL (Abs(_,Body)::rst) A      = FVL (Body::rst) A
+  | FVL (Abs(_,Body,_)::rst) A    = FVL (Body::rst) A
   | FVL ((t as Clos _)::rst) A    = FVL (push_clos t::rst) A
   | FVL (_::rst) A                = FVL rst A
 
@@ -273,8 +292,8 @@ fun FVL [] A = A
    ---------------------------------------------------------------------- *)
 
 fun free_in tm =
-   let fun f1 (Comb(Rator,Rand)) = (f2 Rator) orelse (f2 Rand)
-         | f1 (Abs(_,Body)) = f2 Body
+   let fun f1 (Comb(Rator,Rand,_)) = (f2 Rator) orelse (f2 Rand)
+         | f1 (Abs(_,Body,_)) = f2 Body
          | f1 (t as Clos _) = f2 (push_clos t)
          | f1 _ = false
        and f2 t = term_eq t tm orelse f1 t
@@ -291,8 +310,8 @@ fun var_occurs M =
       fun occ (Fv u)             = (v=u)
         | occ (Bv _)             = false
         | occ (Const _)          = false
-        | occ (Comb(Rator,Rand)) = occ Rand orelse occ Rator
-        | occ (Abs(_,Body))      = occ Body
+        | occ (Comb(Rator,Rand,_)) = occ Rand orelse occ Rator
+        | occ (Abs(_,Body,_))      = occ Body
         | occ (t as Clos _)      = occ (push_clos t)
    in occ end
    handle HOL_ERR _ => raise ERR "var_occurs" "not a variable";
@@ -468,9 +487,11 @@ local val INCOMPAT_TYPES  = Lib.C ERR "incompatible types"
       fun lmk_comb err =
         let fun loop (A,_) [] = A
               | loop (A,typ) (tm::rst) =
-                 let val (ty1,ty2) = with_exn Type.dom_rng typ err
+                let val (ty1,ty2) = with_exn Type.dom_rng typ err
+                    val Afvs = free_vars A
+                    val tmfvs = free_vars tm
                  in if type_of tm = ty1
-                    then loop(Comb(A,tm),ty2) rst
+                    then loop(Comb(A,tm,HOLset.union (Afvs, tmfvs)),ty2) rst
                     else raise err
                  end
         in fn (f,L) => loop(f, type_of f) L
@@ -478,9 +499,9 @@ local val INCOMPAT_TYPES  = Lib.C ERR "incompatible types"
       val mk_comb0 = lmk_comb (INCOMPAT_TYPES "mk_comb")
 in
 
-fun mk_comb(r as (Abs(Fv(_,Ty),_), Rand)) =
+fun mk_comb(r as (Abs(Fv(_,Ty),_,_), Rand)) =
       if type_of Rand = Ty then Comb r else raise INCOMPAT_TYPES "mk_comb"
-  | mk_comb(r as (Clos(_,Abs(Fv(_,Ty),_)), Rand)) =
+  | mk_comb(r as (Clos(_,Abs(Fv(_,Ty),_,_),_), Rand)) =
       if type_of Rand = Ty then Comb r else raise INCOMPAT_TYPES "mk_comb"
   | mk_comb(Rator,Rand) = mk_comb0 (Rator,[Rand])
 
@@ -498,8 +519,8 @@ fun dest_var (Fv v) = v
 
 fun rename_bvar s t =
     case t of
-      Abs(Fv(_, Ty), Body) => Abs(Fv(s,Ty), Body)
-    | Clos(_, Abs _) => rename_bvar s (push_clos t)
+      Abs(Fv(_, Ty), Body, Fvs) => Abs(Fv(s,Ty), Body, Fvs)
+    | Clos(_, Abs _, _) => rename_bvar s (push_clos t)
     | _ => raise ERR "rename_bvar" "not an abstraction";
 
 
@@ -509,11 +530,11 @@ local
 in
 fun aconv t1 t2 = EQ(t1,t2) orelse
  case(t1,t2)
-  of (Comb(M,N),Comb(P,Q)) => aconv N Q andalso aconv M P
-   | (Abs(Fv(_,ty1),M),
-      Abs(Fv(_,ty2),N)) => ty1=ty2 andalso aconv M N
-   | (Clos(e1,b1),
-      Clos(e2,b2)) => (subsEQ(e1,e2) andalso EQ(b1,b2))
+  of (Comb(M,N,_),Comb(P,Q,_)) => aconv N Q andalso aconv M P
+   | (Abs(Fv(_,ty1),M,_),
+      Abs(Fv(_,ty2),N,_)) => ty1=ty2 andalso aconv M N
+   | (Clos(e1,b1,_),
+      Clos(e2,b2,_)) => (subsEQ(e1,e2) andalso EQ(b1,b2))
                        orelse aconv (push_clos t1) (push_clos t2)
    | (Clos _, _) => aconv (push_clos t1) t2
    | (_, Clos _) => aconv t1 (push_clos t2)
@@ -525,19 +546,6 @@ end;
  *        Beta-reduction. Non-renaming.                                      *
  *---------------------------------------------------------------------------*)
 
-fun beta_conv (Comb(Abs(_,Body), Bv 0)) = Body
-  | beta_conv (Comb(Abs(_,Body), Rand)) =
-     let fun subs((tm as Bv j),i)     = if i=j then Rand else tm
-           | subs(Comb(Rator,Rand),i) = Comb(subs(Rator,i),subs(Rand,i))
-           | subs(Abs(v,Body),i)      = Abs(v,subs(Body,i+1))
-           | subs (tm as Clos _,i)    = subs(push_clos tm,i)
-           | subs (tm,_) = tm
-     in
-       subs (Body,0)
-     end
-  | beta_conv (Comb(x as Clos _, Rand)) = beta_conv (Comb(push_clos x, Rand))
-  | beta_conv (x as Clos _) = beta_conv (push_clos x)
-  | beta_conv _ = raise ERR "beta_conv" "not a beta-redex";
 
 
 (*---------------------------------------------------------------------------*
@@ -545,9 +553,9 @@ fun beta_conv (Comb(Abs(_,Body), Bv 0)) = Body
  *   until the next abstraction.                                             *
  *---------------------------------------------------------------------------*)
 
-fun lazy_beta_conv (Comb(Abs(_,Body),Rand)) =
+fun lazy_beta_conv (Comb(Abs(_,Body,_),Rand,_)) =
       mk_clos(Subst.cons(Subst.id,Rand), Body)
-  | lazy_beta_conv (Comb(Clos(Env, Abs(_,Body)),Rand)) =
+  | lazy_beta_conv (Comb(Clos(Env, Abs(_,Body,_),_),Rand,_)) =
       mk_clos(Subst.cons(Env,Rand), Body)
   | lazy_beta_conv (t as Clos _) = lazy_beta_conv (push_clos t)
   | lazy_beta_conv _ = raise ERR "lazy_beta_conv" "not a beta-redex";
@@ -559,15 +567,15 @@ fun lazy_beta_conv (Comb(Abs(_,Body),Rand)) =
 
 local fun pop (tm as Bv i, k) =
            if i=k then raise ERR "eta_conv" "not an eta-redex" else tm
-        | pop (Comb(Rator,Rand),k) = Comb(pop(Rator,k), pop(Rand,k))
-        | pop (Abs(v,Body), k)     = Abs(v,pop(Body, k+1))
+        | pop (Comb(Rator,Rand,_),k,Fvs) = Comb(pop(Rator,k), pop(Rand,k),Fvs)
+        | pop (Abs(v,Body,Fvs), k)     = Abs(v,pop(Body, k+1),Fvs)
         | pop (tm as Clos _, k)    = pop (push_clos tm, k)
         | pop (tm,k) = tm
-      fun eta_body (Comb(Rator,Bv 0)) = pop (Rator,0)
+      fun eta_body (Comb(Rator,Bv 0,_)) = pop (Rator,0)
         | eta_body (tm as Clos _)     = eta_body (push_clos tm)
         | eta_body _ = raise ERR "eta_conv" "not an eta-redex"
 in
-fun eta_conv (Abs(_,Body)) = eta_body Body
+fun eta_conv (Abs(_,Body,_)) = eta_body Body
   | eta_conv (tm as Clos _)  = eta_conv (push_clos tm)
   | eta_conv _ = raise ERR "eta_conv" "not an eta-redex"
 end;
@@ -591,8 +599,8 @@ fun subst [] = I
   | subst theta =
     let val (fmap,b) = addb theta (emptysubst, true)
         fun vsubs (v as Fv _) = (case peek(fmap,v) of NONE => v | SOME y => y)
-          | vsubs (Comb(Rator,Rand)) = Comb(vsubs Rator, vsubs Rand)
-          | vsubs (Abs(Bvar,Body)) = Abs(Bvar,vsubs Body)
+          | vsubs (Comb(Rator,Rand,Fvs)) = Comb(vsubs Rator, vsubs Rand,Fvs)
+          | vsubs (Abs(Bvar,Body,_)) = Abs(Bvar,vsubs Body,_)
           | vsubs (c as Clos _) = vsubs (push_clos c)
           | vsubs tm = tm
         fun subs tm =
@@ -600,8 +608,8 @@ fun subst [] = I
            of SOME residue => residue
             | NONE =>
               (case tm
-                of Comb(Rator,Rand) => Comb(subs Rator, subs Rand)
-                 | Abs(Bvar,Body) => Abs(Bvar,subs Body)
+                of Comb(Rator,Rand,Fvs) => Comb(subs Rator, subs Rand,Fvs)
+                 | Abs(Bvar,Body,Fvs) => Abs(Bvar,subs Body,Fvs)
                  | Clos _        => subs(push_clos tm)
                  |   _         => tm)
     in
@@ -624,8 +632,8 @@ fun inst [] tm = tm
           | DIFF ty => Const(r,(if Type.polymorphic ty then POLY else GRND)ty))
      | inst1 (v as Fv(Name,Ty)) =
          (case Type.ty_sub theta Ty of SAME => v | DIFF ty => Fv(Name, ty))
-     | inst1 (Comb(Rator,Rand)) = Comb(inst1 Rator, inst1 Rand)
-     | inst1 (Abs(Bvar,Body))   = Abs(inst1 Bvar, inst1 Body)
+     | inst1 (Comb(Rator,Rand,Fvs)) = Comb(inst1 Rator, inst1 Rand,Fvs)
+     | inst1 (Abs(Bvar,Body,Fvs))   = Abs(inst1 Bvar, inst1 Body,Fvs)
      | inst1 (t as Clos _)      = inst1(push_clos t)
     in
       inst1 tm
@@ -655,12 +663,12 @@ local
      handle _ => raise ERR "list_mk_binder"
        "expected binder to have type ((ty1 -> ty2) -> ty3) where\
        \ tyvars of ty3 are all in (ty1->ty2)"
-  fun binderFn NONE = (fn v => fn (M,_) => (Abs(v,M),Type.ind))
+  fun binderFn NONE = (fn v => fn (M,_) => (Abs(v,M,HOLset.delete(free_vars_set M, v)),Type.ind))
     | binderFn (SOME binder) =
        let val (dty,rty) = binder_check binder
        in fn v => fn (M,Mty) =>
              let val theta = Type.match_type dty (type_of v --> Mty)
-             in (Comb (inst theta binder, Abs(v,M)),
+             in (Comb (inst theta binder, Abs(v,M,HOLset.delete(free_vars_set M, v)), empty_varset),
                  Type.type_subst theta rty)
              end
        end
@@ -670,10 +678,10 @@ local
   fun lookup v vmap = case peek (vmap,v) of NONE => v | SOME i => Bv i
   fun increment vmap = transform (fn x => x+1) vmap
   fun bind (v as Fv _) vmap k = k (lookup v vmap)
-    | bind (Comb(M,N)) vmap k = bind M vmap (fn m =>
-                                bind N vmap (fn n => k (Comb(m,n))))
-    | bind (Abs(v,M)) vmap k  = bind M (increment vmap)
-                                       (fn q => k (Abs(v,q)))
+    | bind (Comb(M,N,fvs)) vmap k = bind M vmap (fn m =>
+                                bind N vmap (fn n => k (Comb(m,n,fvs))))
+    | bind (Abs(v,M,fvs)) vmap k  = bind M (increment vmap)
+                                       (fn q => k (Abs(v,q,fvs)))
     | bind (t as Clos _) vmap k = bind (push_clos t) vmap k
     | bind tm vmap k = k tm
 in
@@ -699,15 +707,35 @@ end;
 val list_mk_abs = list_mk_binder NONE;
 
 fun mk_abs(Bvar as Fv _, Body) =
-    let fun bind (v as Fv _) i        = if v=Bvar then Bv i else v
-          | bind (Comb(Rator,Rand)) i = Comb(bind Rator i, bind Rand i)
-          | bind (Abs(Bvar,Body)) i   = Abs(Bvar, bind Body (i+1))
+    let
+        fun bind (v as Fv _) i        = if v=Bvar then Bv i else v
+          | bind (Comb(Rator,Rand,Fvs)) i = Comb(bind Rator i, bind Rand i,
+                                                HOLset.delete (Fvs, Bvar))
+          | bind (Abs(Bvar,Body,Fvs)) i   = Abs(Bvar, bind Body (i+1),
+                                                HOLset.delete (Fvs, Bvar))
           | bind (t as Clos _) i      = bind (push_clos t) i
           | bind tm _ = tm (* constant *)
+        val Body' = bind Body 0
+                 
     in
-      Abs(Bvar, bind Body 0)
+      Abs(Bvar, Body', free_vars_set Body')
     end
   | mk_abs _ = raise ERR "mk_abs" "Bvar not a variable"
+
+fun beta_conv (Comb(Abs(_,Body,_), Bv 0, _)) = Body
+  | beta_conv (Comb(Abs(_,Body,_), Rand, _)) =
+     let fun subs((tm as Bv j),i)     = if i=j then Rand else tm
+           | subs(Comb(Rator,Rand,Fvs),i) = mk_comb(subs(Rator,i),subs(Rand,i))
+           | subs(Abs(v,Body,Fvs),i)      = mk_abs(v,subs(Body,i+1))
+           | subs (tm as Clos _,i)    = subs(push_clos tm,i)
+           | subs (tm,_) = tm
+     in
+       subs (Body,0)
+     end
+  | beta_conv (Comb(x as Clos _, Rand, Fvs)) = beta_conv (mk_comb(push_clos x, Rand))
+  | beta_conv (x as Clos _) = beta_conv (push_clos x)
+  | beta_conv _ = raise ERR "beta_conv" "not a beta-redex";
+
 
 
 (*---------------------------------------------------------------------------
@@ -729,7 +757,7 @@ fun mk_abs(Bvar as Fv _, Body) =
 local fun peel f (t as Clos _) A = peel f (push_clos t) A
         | peel f tm A =
             case f tm of
-              SOME(Abs(v,M)) => peel f M (v::A)
+              SOME(Abs(v,M,_)) => peel f M (v::A)
             | otherwise => (A,tm)
       datatype occtype = PREFIX of int | BODY
       fun array_to_revlist A =
@@ -789,8 +817,8 @@ fun strip_binder opt =
             of SOME (PREFIX i) => k (add_vi capt (vmap i,i))
              | SOME BODY => k capt
              | NONE => (insertAVbody n; k capt))
-       | CVs(Comb(M,N)) capt k = CVs N capt (fn c => CVs M c k)
-       | CVs(Abs(_,M)) capt k  = CVs M capt k
+       | CVs(Comb(M,N,_)) capt k = CVs N capt (fn c => CVs M c k)
+       | CVs(Abs(_,M,_)) capt k  = CVs M capt k
        | CVs(t as Clos _) capt k = CVs (push_clos t) capt k
        | CVs tm capt k = k capt
      fun unclash insert [] = ()
@@ -804,7 +832,7 @@ fun strip_binder opt =
      fun unbind (v as Bv i) j k = k (vmap(i-j) handle Subscript => v)
        | unbind (Comb(M,N)) j k = unbind M j (fn m =>
                                   unbind N j (fn n => k(Comb(m,n))))
-       | unbind (Abs(v,M)) j k  = unbind M (j+1) (fn q => k(Abs(v,q)))
+       | unbind (Abs(v,M,fvs)) j k  = unbind M (j+1) (fn q => k(Abs(v,q,fvs)))
        | unbind (t as Clos _) j k = unbind (push_clos t) j k
        | unbind tm j k = k tm
  in
@@ -819,16 +847,16 @@ val strip_abs = strip_binder NONE;
 
 local exception CLASH
 in
-fun dest_abs(Abs(Bvar as Fv(Name,Ty), Body)) =
+fun dest_abs(Abs(Bvar as Fv(Name,Ty), Body, Fvs)) =
     let fun dest (v as (Bv j), i)     = if i=j then Bvar else v
           | dest (v as Fv(s,_), _)    = if Name=s then raise CLASH else v
-          | dest (Comb(Rator,Rand),i) = Comb(dest(Rator,i),dest(Rand,i))
-          | dest (Abs(Bvar,Body),i)   = Abs(Bvar, dest(Body,i+1))
+          | dest (Comb(Rator,Rand,Fvs),i) = Comb(dest(Rator,i),dest(Rand,i),Fvs)
+          | dest (Abs(Bvar,Body,Fvs),i)   = Abs(Bvar, dest(Body,i+1),Fvs)
           | dest (t as Clos _, i)     = dest (push_clos t, i)
           | dest (tm,_) = tm
     in (Bvar, dest(Body,0))
        handle CLASH =>
-              dest_abs(Abs(variant (free_vars Body) Bvar, Body))
+              dest_abs(Abs(variant (free_vars Body) Bvar, Body, Fvs))
     end
   | dest_abs (t as Clos _) = dest_abs (push_clos t)
   | dest_abs _ = raise ERR "dest_abs" "not a lambda abstraction"
@@ -837,7 +865,7 @@ end;
 local
 open KernelSig
 in
-fun break_abs(Abs(_,Body)) = Body
+fun break_abs(Abs(_,Body,_)) = Body
   | break_abs(t as Clos _) = break_abs (push_clos t)
   | break_abs _ = raise ERR "break_abs" "not an abstraction";
 
@@ -858,12 +886,12 @@ end
                Derived destructors
  ---------------------------------------------------------------------------*)
 
-fun rator (Comb(Rator,_)) = Rator
-  | rator (Clos(Env, Comb(Rator,_))) = mk_clos(Env,Rator)
+fun rator (Comb(Rator,_,_)) = Rator
+  | rator (Clos(Env, Comb(Rator,_,_),_)) = mk_clos(Env,Rator)
   | rator _ = raise ERR "rator" "not a comb"
 
-fun rand (Comb(_,Rand)) = Rand
-  | rand (Clos(Env, Comb(_,Rand))) = mk_clos(Env,Rand)
+fun rand (Comb(_,Rand,_)) = Rand
+  | rand (Clos(Env, Comb(_,Rand,_),_)) = mk_clos(Env,Rand)
   | rand _ = raise ERR "rand" "not a comb"
 
 val bvar = fst o dest_abs;
@@ -878,8 +906,8 @@ val body = snd o dest_abs;
 local
   fun MERR s = raise ERR "raw_match_term" s
   fun free (Bv i) n             = i<n
-    | free (Comb(Rator,Rand)) n = free Rand n andalso free Rator n
-    | free (Abs(_,Body)) n      = free Body (n+1)
+    | free (Comb(Rator,Rand,_)) n = free Rand n andalso free Rator n
+    | free (Abs(_,Body,_)) n      = free Body (n+1)
     | free (t as Clos _) n      = free (push_clos t) n
     | free _ _ = true
   fun lookup x ids =
@@ -908,7 +936,7 @@ fun RM [] theta = theta
           let val n1 = id_toString c1
               val n2 = id_toString c2
           in
-           MERR ("Different constants: "^n1^" and "^n2)
+              MERR ("Different constants: "^n1^" and "^n2)
           end
          else
          case (ty1,ty2)
@@ -917,9 +945,9 @@ fun RM [] theta = theta
                        else MERR"const-const with different (ground) types"
            | (POLY pat,GRND obj) => (tmS, tymatch pat obj tyS)
            | (POLY pat,POLY obj) => (tmS, tymatch pat obj tyS))
-  | RM ((Abs(Fv(_,ty1),M),Abs(Fv(_,ty2),N),_)::rst) (tmS,tyS)
+  | RM ((Abs(Fv(_,ty1),M,_),Abs(Fv(_,ty2),N,_),_)::rst) (tmS,tyS)
       = RM ((M,N,true)::rst) (tmS, tymatch ty1 ty2 tyS)
-  | RM ((Comb(M,N),Comb(P,Q),s)::rst) S = RM ((M,P,s)::(N,Q,s)::rst) S
+  | RM ((Comb(M,N,_),Comb(P,Q,_),s)::rst) S = RM ((M,P,s)::(N,Q,s)::rst) S
   | RM ((Bv i,Bv j,_)::rst) S  = if i=j then RM rst S
                                  else MERR "Bound var doesn't match"
   | RM (((pat as Clos _),ob,s)::t) S = RM ((push_clos pat,ob,s)::t) S
@@ -949,13 +977,13 @@ val match_term = match_terml [] empty_varset;
        Must know that ty is the type of tm1 and tm2.
  ---------------------------------------------------------------------------*)
 
-fun prim_mk_eq ty tm1 tm2 = Comb(Comb(inst [Type.alpha |-> ty] eqc, tm1), tm2)
+fun prim_mk_eq ty tm1 tm2 = mk_comb(mk_comb(inst [Type.alpha |-> ty] eqc, tm1), tm2)
 
 (*---------------------------------------------------------------------------
       Must know that tm1 and tm2 both have type "bool"
  ---------------------------------------------------------------------------*)
 
-fun prim_mk_imp tm1 tm2  = Comb(Comb(imp, tm1),tm2);
+fun prim_mk_imp tm1 tm2  = mk_comb(mk_comb(imp, tm1),tm2);
 
 (*---------------------------------------------------------------------------
       Take an equality apart, and return the type of the operands
@@ -978,16 +1006,16 @@ end;
 local val subs_comp = Subst.comp mk_clos
   fun vars_sigma_norm (s,t) =
     case t of
-      Comb(Rator,Rand) => Comb(vars_sigma_norm(s, Rator),
+      Comb(Rator,Rand,_) => mk_comb(vars_sigma_norm(s, Rator),
                                vars_sigma_norm(s, Rand))
     | Bv i =>
         (case Subst.exp_rel(s,i) of
            (0, SOME v)   => vars_sigma_norm (Subst.id, v)
          | (lams,SOME v) => vars_sigma_norm (Subst.shift(lams,Subst.id),v)
          | (lams,NONE)   => Bv lams)
-    | Abs(Bvar,Body) => Abs(Bvar, vars_sigma_norm  (Subst.lift(1,s), Body))
+    | Abs(Bvar,Body,Fvs) => Abs(Bvar, vars_sigma_norm  (Subst.lift(1,s), Body), Fvs)
     | Fv _ => t
-    | Clos(Env,Body) => vars_sigma_norm (subs_comp(s,Env), Body)
+    | Clos(Env,Body,_) => vars_sigma_norm (subs_comp(s,Env), Body)
     | _ => t  (* i.e., a const *)
 in
 fun norm_clos tm = vars_sigma_norm(Subst.id,tm)
@@ -999,8 +1027,8 @@ fun size acc tlist =
     | t :: ts => let
       in
         case t of
-          Comb(t1,t2) => size (1 + acc) (t1 :: t2 :: ts)
-        | Abs(_, b) => size (1 + acc) (b :: ts)
+          Comb(t1,t2,_) => size (1 + acc) (t1 :: t2 :: ts)
+        | Abs(_, b, _) => size (1 + acc) (b :: ts)
         | Clos _ => size acc (push_clos t :: ts)
         | _ => size (1 + acc) ts
       end
@@ -1014,8 +1042,8 @@ fun term_size t = size 0 [t]
 fun trav f =
   let fun trv (a as Fv _) = f a
         | trv (a as Const _) = f a
-        | trv (Comb(Rator,Rand)) = (trv Rator; trv Rand)
-        | trv (Abs(Bvar,Body))   = (trv Bvar; trv Body)
+        | trv (Comb(Rator,Rand,_)) = (trv Rator; trv Rand)
+        | trv (Abs(Bvar,Body,_))   = (trv Bvar; trv Body)
         | trv _ = ()
   in
     trv o norm_clos
@@ -1033,7 +1061,7 @@ val percent = "%"
 fun strip_comb t =
     let fun recurse t A =
             case t of
-                Comb(f,x) => recurse f (x::A)
+                Comb(f,x,_) => recurse f (x::A)
               | _ => (t, A)
     in
       recurse t []
@@ -1047,9 +1075,9 @@ fun pp_raw_term index tm = let
   fun pp acc tasklist =
       case tasklist of
           [] => String.concat (List.rev acc)
-        | ppTM (Abs(Bvar, Body)) :: rest =>
+        | ppTM (Abs(Bvar, Body, _)) :: rest =>
             pp acc (ppTM Bvar :: ppTM Body :: ppLAM :: rest)
-        | ppTM (t as Comb(Rator, Rand)) :: rest =>
+        | ppTM (t as Comb(Rator, Rand, _)) :: rest =>
           let
             val (f, args) = strip_comb t
           in
@@ -1136,13 +1164,13 @@ fun read_raw tmv = let
         (_, SOME (bvar n,  rst)) => parse (Bv n::stk,rst)
       | (_, SOME (ident n, rst)) => parse (index n::stk,rst)
       | (stk, SOME (app n, rst)) => doapps n stk rst
-      | (t::stk, SOME (I1 n, rst)) => parse (Comb(index n, t) :: stk, rst)
-      | (t::stk, SOME (BV1 n, rst)) => parse (Comb(Bv n, t) :: stk, rst)
+      | (t::stk, SOME (I1 n, rst)) => parse (mk_comb(index n, t) :: stk, rst)
+      | (t::stk, SOME (BV1 n, rst)) => parse (mk_comb(Bv n, t) :: stk, rst)
       | (t2::t1::stk, SOME (I2 n, rst)) =>
-          parse (Comb(Comb(index n, t1), t2) :: stk, rst)
+          parse (mk_comb(mk_comb(index n, t1), t2) :: stk, rst)
       | (t2::t1::stk, SOME (BV2 n, rst)) =>
-          parse (Comb(Comb(Bv n, t1), t2) :: stk, rst)
-      | (bd::bv::stk, SOME(lam,rst)) => parse (Abs(bv,bd)::stk, rst)
+          parse (Comb(Comb(Bv n, t1, _), t2, _) :: stk, rst)
+      | (bd::bv::stk, SOME(lam,rst)) => parse (mk_abs(bv,bd)::stk, rst)
       | (_, SOME(lam, _)) => raise ERR "read_raw" "lam: small stack"
       | ([tm], NONE) => tm
       | ([], NONE) => raise ERR "read_raw" "eof: empty stack"
@@ -1151,7 +1179,7 @@ fun read_raw tmv = let
       if n = 0 then parse (stk,rst)
       else
         case stk of
-            x::f::stk => doapps (n - 1) (Comb(f,x)::stk) rst
+            x::f::stk => doapps (n - 1) (Comb(f,x,_)::stk) rst
           | _ =>  raise ERR "read_raw" "app: small stack"
 
 in
@@ -1175,8 +1203,8 @@ fun uptodate_term t = let
           | Const(info, ty) => KernelSig.uptodate_id info andalso
                                uptodate_type (to_hol_type ty) andalso
                                recurse rest
-          | Comb(f,x) => recurse (f::x::rest)
-          | Abs(v,bod) => recurse (v::bod::rest)
+          | Comb(f,x,_) => recurse (f::x::rest)
+          | Abs(v,bod,_) => recurse (v::bod::rest)
           | Bv _ => recurse rest
           | Clos _ => recurse (push_clos t :: rest)
         end
@@ -1194,7 +1222,7 @@ fun dest_term M =
   case M of
       Const _ => CONST (dest_thy_const M)
     | Fv p => VAR p
-    | Comb p => COMB p
+    | Comb (a,b,_) => COMB (a,b)
     | Abs _ => LAMB (dest_abs M)
     | Clos _ => dest_term (push_clos M)
     | Bv _ => raise Fail "dest_term applied to bound variable"
@@ -1207,8 +1235,8 @@ fun identical t1 t2 =
     | (Const p1, Const p2) => p1 = p2
     | (Fv p1, Fv p2) => p1 = p2
     | (Bv i1, Bv i2) => i1 = i2
-    | (Comb(t1,t2), Comb(ta,tb)) => identical t1 ta andalso identical t2 tb
-    | (Abs(v1,t1), Abs (v2, t2)) => v1 = v2 andalso identical t1 t2
+    | (Comb(t1,t2,_), Comb(ta,tb,_)) => identical t1 ta andalso identical t2 tb
+    | (Abs(v1,t1,_), Abs (v2, t2, _)) => v1 = v2 andalso identical t1 t2
     | _ => false
 
 end (* Term *)

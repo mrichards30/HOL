@@ -17,4 +17,9 @@ sig
   val is_bvar        : term -> bool
   val kernelid       : string
 
+  val mk_clos        : term Subst.subs * term -> term
+  val push_clos      : term -> term
+  val is_bv0_present : term -> bool
+  val compute_clos_free_vars : term Subst.subs -> term -> term HOLset.set  
+
 end

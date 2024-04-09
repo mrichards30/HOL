@@ -37,11 +37,11 @@ fun to_hol_type (GRND ty) = ty
 type tmconst = id * holty
 
 datatype term = Fv of string * hol_type
-              | Bv of int
-              | Const of tmconst
-              | Comb  of term * term
-              | Abs   of term * term
-              | Clos  of term Subst.subs * term;
+              | Bv of int 
+              | Const of tmconst 
+              | Comb  of term * term * term HOLset.set
+              | Abs   of term * term * term HOLset.set
+              | Clos  of term Subst.subs * term * term HOLset.set;
 
 (*---------------------------------------------------------------------------
       The representation of theorems. A "tag" is a pair of the oracles
