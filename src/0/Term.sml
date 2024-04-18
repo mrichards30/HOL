@@ -117,10 +117,9 @@ and free_vars_set (v as Fv _) = HOLset.add (empty_varset, v)
   | free_vars_set (Comb(f,x,Fvs))       = Fvs
   | free_vars_set (Abs(_,Body,Fvs))     = Fvs
   | free_vars_set (t as Clos _)         = free_vars_set (push_clos t);
-                                   
-end;;
+;
 
-val free_vars = free_vars_set o HOLset.listItems;
+val free_vars = HOLset.listItems o free_vars_set;
 
 (*---------------------------------------------------------------------------
     Propagate substitutions so that we are sure the head of the term is
@@ -140,9 +139,9 @@ local fun lookup 0 (ty::_)  = ty
         | ty_of (Const(_,GRND Ty)) _   = Ty
         | ty_of (Const(_,POLY Ty)) _   = Ty
         | ty_of (Bv i) E               = lookup i E
-        | ty_of (Comb(Rator, _)) E     = snd(Type.dom_rng(ty_of Rator E))
+        | ty_of (Comb(Rator, _, _)) E     = snd(Type.dom_rng(ty_of Rator E))
         | ty_of (t as Clos _) E        = ty_of (push_clos t) E
-        | ty_of (Abs(Fv(_,Ty),Body)) E = Ty --> ty_of Body (Ty::E)
+        | ty_of (Abs(Fv(_,Ty),Body,_)) E = Ty --> ty_of Body (Ty::E)
         | ty_of _ _ = raise ERR "type_of" "term construction"
 in
 fun type_of tm = ty_of tm []
@@ -186,7 +185,7 @@ end;
  *---------------------------------------------------------------------------*)
 
 fun free_vars_lr tm =
-  let fun FV ((v as Fv _)::t) A   = FV t (Lib.insert v A)
+  let fun FV ((Fv p)::t) A   = FV t (Lib.insert p A)
         | FV (Bv _::t) A          = FV t A
         | FV (Const _::t) A       = FV t A
         | FV (Comb(M,N,_)::t) A     = FV (M::N::t) A
@@ -194,23 +193,25 @@ fun free_vars_lr tm =
         | FV ((M as Clos _)::t) A = FV (push_clos M::t) A
         | FV [] A = rev A
   in
-     FV [tm] []
+     List.map Fv (FV [tm] [])
   end;
 
 (*---------------------------------------------------------------------------*
  * The set of all variables in a term, represented as a list.                *
  *---------------------------------------------------------------------------*)
 
-local fun vars (v as Fv _) A        = Lib.insert v A
+local fun vars (Fv p) A        = Lib.insert p A
         | vars (Comb(Rator,Rand,_)) A = vars Rand (vars Rator A)
         | vars (Abs(Bvar,Body,_)) A   = vars Body (vars Bvar A)
         | vars (t as Clos _) A      = vars (push_clos t) A
         | vars _ A = A
 in
-fun all_vars tm = vars tm []
+fun all_vars tm = List.map Fv (vars tm [])
 end;
 
-fun free_varsl tm_list = itlist (union o free_vars) tm_list []
+fun free_varsl tm_list =
+    HOLset.listItems (itlist (fn t => fn A => HOLset.union (A, free_vars_set t)) tm_list empty_varset)
+           
 fun all_varsl tm_list  = itlist (union o all_vars) tm_list [];
 
 (* ----------------------------------------------------------------------
@@ -600,7 +601,7 @@ fun subst [] = I
     let val (fmap,b) = addb theta (emptysubst, true)
         fun vsubs (v as Fv _) = (case peek(fmap,v) of NONE => v | SOME y => y)
           | vsubs (Comb(Rator,Rand,Fvs)) = Comb(vsubs Rator, vsubs Rand,Fvs)
-          | vsubs (Abs(Bvar,Body,_)) = Abs(Bvar,vsubs Body,_)
+          | vsubs (Abs(Bvar,Body,Fvs)) = Abs(Bvar,vsubs Body,Fvs) (*TODO wrong Fvs*)
           | vsubs (c as Clos _) = vsubs (push_clos c)
           | vsubs tm = tm
         fun subs tm =
@@ -1169,7 +1170,7 @@ fun read_raw tmv = let
       | (t2::t1::stk, SOME (I2 n, rst)) =>
           parse (mk_comb(mk_comb(index n, t1), t2) :: stk, rst)
       | (t2::t1::stk, SOME (BV2 n, rst)) =>
-          parse (Comb(Comb(Bv n, t1, _), t2, _) :: stk, rst)
+          parse (mk_comb(mk_comb(Bv n, t1), t2) :: stk, rst)
       | (bd::bv::stk, SOME(lam,rst)) => parse (mk_abs(bv,bd)::stk, rst)
       | (_, SOME(lam, _)) => raise ERR "read_raw" "lam: small stack"
       | ([tm], NONE) => tm
@@ -1179,7 +1180,7 @@ fun read_raw tmv = let
       if n = 0 then parse (stk,rst)
       else
         case stk of
-            x::f::stk => doapps (n - 1) (Comb(f,x,_)::stk) rst
+            x::f::stk => doapps (n - 1) (mk_comb(f,x)::stk) rst
           | _ =>  raise ERR "read_raw" "app: small stack"
 
 in
