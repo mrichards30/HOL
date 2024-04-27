@@ -70,16 +70,6 @@ end
     This invariant is enforced if we always use mk_clos instead of Clos.
  ---------------------------------------------------------------------------*)
 
-(*---------------------------------------------------------------------------
-     Support for efficient sets of variables
- ---------------------------------------------------------------------------*)
-
-fun var_compare (Fv(s1,ty1), Fv(s2,ty2)) =
-    (case String.compare (s1,s2)
-         of EQUAL => Type.compare (ty1,ty2)
-          | x => x)
-  | var_compare _ = raise ERR "var_compare" "variables required";
-
 val empty_varset = HOLset.empty var_compare
                                 
 fun mk_clos (s, Bv i) =
@@ -195,8 +185,17 @@ fun all_vars tm = List.map Fv (vars [tm] [])
 fun all_varsl tm_list  = List.map Fv (vars tm_list [])
 end;
 
+(*---------------------------------------------------------------------------
+     Support for efficient sets of variables
+ ---------------------------------------------------------------------------*)
+
+fun var_compare (Fv(s1,ty1), Fv(s2,ty2)) =
+    (case String.compare (s1,s2)
+         of EQUAL => Type.compare (ty1,ty2)
+          | x => x)
+  | var_compare _ = raise ERR "var_compare" "variables required";
+
 fun free_varsl tm_list = HOLset.listItems (free_vars_set tm_list empty_varset);
-           
 
 
 (* ----------------------------------------------------------------------
