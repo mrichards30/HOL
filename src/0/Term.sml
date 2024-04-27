@@ -89,18 +89,16 @@ fun mk_clos (s, Bv i) =
               | (v, NONE)   => Bv v)
      | mk_clos (s, t as Fv _)     = t
      | mk_clos (s, t as Const _)  = t
-     | mk_clos (s,t)              = Clos(s, t)
-
-and push_clos (Clos(E, Comb(f,x,_))) = Comb(mk_clos(E,f), mk_clos(E,x), NONE)
-     | push_clos (Clos(E, Abs(v,M,_)))  = Abs(v, mk_clos (Subst.lift(1,E),M),NONE)
-     | push_clos _ = raise ERR "push_clos" "not a subst";
+     | mk_clos (s,t)              = Clos(s, t);
 
 (*---------------------------------------------------------------------------
     Propagate substitutions so that we are sure the head of the term is
     not a delayed substitution.
  ---------------------------------------------------------------------------*)
 
-
+fun push_clos (Clos(E, Comb(f,x,_))) = Comb(mk_clos(E,f), mk_clos(E,x), NONE)
+     | push_clos (Clos(E, Abs(v,M,_)))  = Abs(v, mk_clos (Subst.lift(1,E),M),NONE)
+     | push_clos _ = raise ERR "push_clos" "not a subst";
 
 (*---------------------------------------------------------------------------*
  * Computing the type of a term.                                             *
