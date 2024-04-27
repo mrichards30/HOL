@@ -812,9 +812,9 @@ fun strip_binder opt =
             ; unclash insert rst
            end
      fun unbind (v as Bv i) j k = k (vmap(i-j) handle Subscript => v)
-       | unbind (Comb(M,N)) j k = unbind M j (fn m =>
-                                  unbind N j (fn n => k(Comb(m,n))))
-       | unbind (Abs(v,M,fvs)) j k  = unbind M (j+1) (fn q => k(Abs(v,q,fvs)))
+       | unbind (Comb(M,N,_)) j k = unbind M j (fn m =>
+                                  unbind N j (fn n => k(comb'(m,n))))
+       | unbind (Abs(v,M,_)) j k  = unbind M (j+1) (fn q => k(abs'(v,q)))
        | unbind (t as Clos _) j k = unbind (push_clos t) j k
        | unbind tm j k = k tm
  in
@@ -894,7 +894,7 @@ local
     | free _ _ = true
   fun lookup x ids =
    let fun look [] = if HOLset.member(ids,x) then SOME x else NONE
-         | look ({redex,residue}::t) = if x=redex then SOME residue else look t
+         | look ({redex,residue}::t) = if aconv x redex then SOME residue else look t
    in look end
   fun bound_by_scope scoped M = if scoped then not (free M 0) else false
   val tymatch = Type.raw_match_type
@@ -906,7 +906,7 @@ fun RM [] theta = theta
        then MERR "Attempt to capture bound variable"
        else RM rst
             ((case lookup v Id tmS
-               of NONE => if v=tm then (tmS,HOLset.add(Id,v))
+               of NONE => if term_eq v tm then (tmS,HOLset.add(Id,v))
                                   else ((v |-> tm)::tmS,Id)
                 | SOME tm' => if aconv tm' tm then S1
                               else MERR ("double bind on variable "^
@@ -945,7 +945,7 @@ fun norm_subst ((tmS,_),(tyS,_)) =
      fun del A [] = A
        | del A ({redex,residue}::rst) =
          del (let val redex' = Theta(redex)
-              in if residue=redex' then A else (redex' |-> residue)::A
+              in if aconv residue redex' then A else (redex' |-> residue)::A
               end) rst
  in (del [] tmS,tyS)
  end
@@ -1210,7 +1210,7 @@ fun dest_term M =
     | Bv _ => raise Fail "dest_term applied to bound variable"
 
 fun identical t1 t2 =
-  t1 = t2 orelse
+  term_eq t1 t2 orelse
   case (t1,t2) of
       (Clos _, _) => identical (push_clos t1) t2
     | (_, Clos _) => identical t1 (push_clos t2)
@@ -1218,7 +1218,7 @@ fun identical t1 t2 =
     | (Fv p1, Fv p2) => p1 = p2
     | (Bv i1, Bv i2) => i1 = i2
     | (Comb(t1,t2,_), Comb(ta,tb,_)) => identical t1 ta andalso identical t2 tb
-    | (Abs(v1,t1,_), Abs (v2, t2, _)) => v1 = v2 andalso identical t1 t2
+    | (Abs(v1,t1,_), Abs (v2, t2, _)) => term_eq v1 v2 andalso identical t1 t2
     | _ => false
 
 end (* Term *)
