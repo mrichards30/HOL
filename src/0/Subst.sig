@@ -9,5 +9,6 @@ sig
   val is_id   : 'a subs -> bool
   val exp_rel : 'a subs * int -> int * 'a option
   val comp    : ('a subs * 'a -> 'a) -> 'a subs * 'a subs -> 'a subs
+  val subsEQ  : ('a -> 'a -> bool) -> ('a subs * 'a subs) -> bool
 
 end

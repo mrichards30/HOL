@@ -39,9 +39,9 @@ type tmconst = id * holty
 datatype term = Fv of string * hol_type
               | Bv of int 
               | Const of tmconst 
-              | Comb  of term * term * term HOLset.set
-              | Abs   of term * term * term HOLset.set
-              | Clos  of term Subst.subs * term * term HOLset.set;
+              | Comb  of term * term * term HOLset.set option
+              | Abs   of term * term * term HOLset.set option
+              | Clos  of term Subst.subs * term;
 
 (*---------------------------------------------------------------------------
       The representation of theorems. A "tag" is a pair of the oracles

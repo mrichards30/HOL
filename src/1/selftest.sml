@@ -1302,3 +1302,7 @@ val _ = shouldfail {checkexn = is_struct_HOL_ERR "Parse",
                     printresult = with_flag (show_types, true) term_to_string,
                     testfn = Parse.Term o single o QUOTE}
                    "!b:bool'. p /\\ b"
+                   
+val _ = require (check_result (equal expected))
+                (fn pat => List.map snd (match (n,pat)))
+                pat;
