@@ -70,8 +70,6 @@ end
     This invariant is enforced if we always use mk_clos instead of Clos.
  ---------------------------------------------------------------------------*)
 
-val empty_varset = HOLset.empty var_compare
-                                
 fun mk_clos (s, Bv i) =
      (case (Subst.exp_rel(s,i))
            of (0, SOME t) => t
@@ -129,9 +127,9 @@ local fun tyV (Fv(_,Ty)) k         = k (Type.type_vars Ty)
         | tyV (Bv _) k             = k []
         | tyV (Const(_,GRND _)) k  = k []
         | tyV (Const(_,POLY Ty)) k = k (Type.type_vars Ty)
-        | tyV (Comb(Rator,Rand,Fvs)) k = tyV Rand (fn q1 =>
+        | tyV (Comb(Rator,Rand,_)) k = tyV Rand (fn q1 =>
                                      tyV Rator(fn q2 => k (union q2 q1)))
-        | tyV (Abs(Bvar,Body,Fvs)) k   = tyV Body (fn q1 =>
+        | tyV (Abs(Bvar,Body,_)) k   = tyV Body (fn q1 =>
                                      tyV Bvar (fn q2 => k (union q2 q1)))
         | tyV (t as Clos _) k      = tyV (push_clos t) k
 in
@@ -142,6 +140,14 @@ end;
  * The free variables of a lambda term. Tail recursive (from Ken Larsen).    *
  *---------------------------------------------------------------------------*)
 
+fun var_compare (Fv(s1,ty1), Fv(s2,ty2)) =
+       (case String.compare (s1,s2)
+         of EQUAL => Type.compare (ty1,ty2)
+          | x => x)
+  | var_compare _ = raise ERR "var_compare" "variables required";
+
+val empty_varset = HOLset.empty var_compare
+                                
 fun free_vars_set L set =
     case L of
         [] => set
@@ -188,12 +194,6 @@ end;
 (*---------------------------------------------------------------------------
      Support for efficient sets of variables
  ---------------------------------------------------------------------------*)
-
-fun var_compare (Fv(s1,ty1), Fv(s2,ty2)) =
-    (case String.compare (s1,s2)
-         of EQUAL => Type.compare (ty1,ty2)
-          | x => x)
-  | var_compare _ = raise ERR "var_compare" "variables required";
 
 fun free_varsl tm_list = HOLset.listItems (free_vars_set tm_list empty_varset);
 
@@ -504,7 +504,8 @@ fun rename_bvar s t =
 
 
 local
-  fun EQ(t1,t2) = fast_term_eq t1 t2
+    fun EQ(t1,t2) = fast_term_eq t1 t2
+    val write = with_flag(MESG_to_string,Lib.I) HOL_MESG
 in
 fun aconv t1 t2 = EQ(t1,t2) orelse
  case(t1,t2)
@@ -516,7 +517,15 @@ fun aconv t1 t2 = EQ(t1,t2) orelse
                        orelse aconv (push_clos t1) (push_clos t2)
    | (Clos _, _) => aconv (push_clos t1) t2
    | (_, Clos _) => aconv t1 (push_clos t2)
-   | (M,N)       => compare (M, N) = EQUAL
+   | (Const x, Const y) => x = y
+   | (Fv (n1, t1), Fv (n2, t2)) => (
+       if (n1,t1)=(n2,t2)
+       then ()
+       else write ("testing vars " ^ n1 ^ " and " ^ n2);
+       (n1,t1)=(n2,t2)
+   )
+   | (Bv i, Bv j) => i = j
+   | _ => false
 end;
 
 
@@ -524,6 +533,21 @@ end;
  *        Beta-reduction. Non-renaming.                                      *
  *---------------------------------------------------------------------------*)
 
+fun abs' (Bvar, Body) = Abs(Bvar, Body, SOME (free_vars_set1 Body))
+                           
+fun beta_conv (Comb(Abs(_,Body,_), Bv 0, _)) = Body
+  | beta_conv (Comb(Abs(_,Body,_), Rand, _)) =
+     let fun subs((tm as Bv j),i)     = if i=j then Rand else tm
+           | subs(Comb(Rator,Rand,Fvs),i) = comb'(subs(Rator,i),subs(Rand,i))
+           | subs(Abs(v,Body,Fvs),i)      = abs'(v,subs(Body,i+1))
+           | subs (tm as Clos _,i)    = subs(push_clos tm,i)
+           | subs (tm,_) = tm
+     in
+       subs (Body,0)
+     end
+  | beta_conv (Comb(x as Clos _, Rand, Fvs)) = beta_conv (mk_comb(push_clos x, Rand))
+  | beta_conv (x as Clos _) = beta_conv (push_clos x)
+  | beta_conv _ = raise ERR "beta_conv" "not a beta-redex";
 
 
 (*---------------------------------------------------------------------------*
@@ -685,8 +709,6 @@ end;
 
 val list_mk_abs = list_mk_binder NONE;
 
-fun abs' (Bvar, Body) = Abs(Bvar, Body, SOME (free_vars_set1 Body))
-
 fun mk_abs(Bvar as Fv x, Body) =
     let
         fun bind (v as Fv y) i        = if x=y then Bv i else v
@@ -697,24 +719,9 @@ fun mk_abs(Bvar as Fv x, Body) =
         val Body' = bind Body 0
                  
     in
-      Abs(Bvar, Body', SOME (free_vars_set1 Body'))
+      abs'(Bvar, Body')
     end
   | mk_abs _ = raise ERR "mk_abs" "Bvar not a variable"
-
-fun beta_conv (Comb(Abs(_,Body,_), Bv 0, _)) = Body
-  | beta_conv (Comb(Abs(_,Body,_), Rand, _)) =
-     let fun subs((tm as Bv j),i)     = if i=j then Rand else tm
-           | subs(Comb(Rator,Rand,Fvs),i) = mk_comb(subs(Rator,i),subs(Rand,i))
-           | subs(Abs(v,Body,Fvs),i)      = mk_abs(v,subs(Body,i+1))
-           | subs (tm as Clos _,i)    = subs(push_clos tm,i)
-           | subs (tm,_) = tm
-     in
-       subs (Body,0)
-     end
-  | beta_conv (Comb(x as Clos _, Rand, Fvs)) = beta_conv (mk_comb(push_clos x, Rand))
-  | beta_conv (x as Clos _) = beta_conv (push_clos x)
-  | beta_conv _ = raise ERR "beta_conv" "not a beta-redex";
-
 
 
 (*---------------------------------------------------------------------------
@@ -903,7 +910,7 @@ fun RM [] theta = theta
        then MERR "Attempt to capture bound variable"
        else RM rst
             ((case lookup v Id tmS
-               of NONE => if term_eq v tm then (tmS,HOLset.add(Id,v))
+               of NONE => if aconv v tm then (tmS,HOLset.add(Id,v))
                                   else ((v |-> tm)::tmS,Id)
                 | SOME tm' => if aconv tm' tm then S1
                               else MERR ("double bind on variable "^
@@ -915,7 +922,7 @@ fun RM [] theta = theta
           let val n1 = id_toString c1
               val n2 = id_toString c2
           in
-              MERR ("Different constants: "^n1^" and "^n2)
+           MERR ("Different constants: "^n1^" and "^n2)
           end
          else
          case (ty1,ty2)
@@ -956,13 +963,13 @@ val match_term = match_terml [] empty_varset;
        Must know that ty is the type of tm1 and tm2.
  ---------------------------------------------------------------------------*)
 
-fun prim_mk_eq ty tm1 tm2 = mk_comb(mk_comb(inst [Type.alpha |-> ty] eqc, tm1), tm2)
+fun prim_mk_eq ty tm1 tm2 = comb'(comb'(inst [Type.alpha |-> ty] eqc, tm1), tm2)
 
 (*---------------------------------------------------------------------------
       Must know that tm1 and tm2 both have type "bool"
  ---------------------------------------------------------------------------*)
 
-fun prim_mk_imp tm1 tm2  = mk_comb(mk_comb(imp, tm1),tm2);
+fun prim_mk_imp tm1 tm2  = comb'(comb'(imp, tm1),tm2);
 
 (*---------------------------------------------------------------------------
       Take an equality apart, and return the type of the operands
@@ -985,14 +992,14 @@ end;
 local val subs_comp = Subst.comp mk_clos
   fun vars_sigma_norm (s,t) =
     case t of
-      Comb(Rator,Rand,_) => mk_comb(vars_sigma_norm(s, Rator),
+      Comb(Rator,Rand,_) => comb'(vars_sigma_norm(s, Rator),
                                vars_sigma_norm(s, Rand))
     | Bv i =>
         (case Subst.exp_rel(s,i) of
            (0, SOME v)   => vars_sigma_norm (Subst.id, v)
          | (lams,SOME v) => vars_sigma_norm (Subst.shift(lams,Subst.id),v)
          | (lams,NONE)   => Bv lams)
-    | Abs(Bvar,Body,Fvs) => Abs(Bvar, vars_sigma_norm  (Subst.lift(1,s), Body), Fvs)
+    | Abs(Bvar,Body,Fvs) => abs'(Bvar, vars_sigma_norm  (Subst.lift(1,s), Body))
     | Fv _ => t
     | Clos(Env,Body) => vars_sigma_norm (subs_comp(s,Env), Body)
     | _ => t  (* i.e., a const *)
@@ -1143,13 +1150,13 @@ fun read_raw tmv = let
         (_, SOME (bvar n,  rst)) => parse (Bv n::stk,rst)
       | (_, SOME (ident n, rst)) => parse (index n::stk,rst)
       | (stk, SOME (app n, rst)) => doapps n stk rst
-      | (t::stk, SOME (I1 n, rst)) => parse (mk_comb(index n, t) :: stk, rst)
-      | (t::stk, SOME (BV1 n, rst)) => parse (mk_comb(Bv n, t) :: stk, rst)
+      | (t::stk, SOME (I1 n, rst)) => parse (comb'(index n, t) :: stk, rst)
+      | (t::stk, SOME (BV1 n, rst)) => parse (comb'(Bv n, t) :: stk, rst)
       | (t2::t1::stk, SOME (I2 n, rst)) =>
-          parse (mk_comb(mk_comb(index n, t1), t2) :: stk, rst)
+          parse (comb'(comb'(index n, t1), t2) :: stk, rst)
       | (t2::t1::stk, SOME (BV2 n, rst)) =>
-          parse (mk_comb(mk_comb(Bv n, t1), t2) :: stk, rst)
-      | (bd::bv::stk, SOME(lam,rst)) => parse (mk_abs(bv,bd)::stk, rst)
+          parse (comb'(comb'(Bv n, t1), t2) :: stk, rst)
+      | (bd::bv::stk, SOME(lam,rst)) => parse (abs'(bv,bd)::stk, rst)
       | (_, SOME(lam, _)) => raise ERR "read_raw" "lam: small stack"
       | ([tm], NONE) => tm
       | ([], NONE) => raise ERR "read_raw" "eof: empty stack"
@@ -1158,7 +1165,7 @@ fun read_raw tmv = let
       if n = 0 then parse (stk,rst)
       else
         case stk of
-            x::f::stk => doapps (n - 1) (mk_comb(f,x)::stk) rst
+            x::f::stk => doapps (n - 1) (comb'(f,x)::stk) rst
           | _ =>  raise ERR "read_raw" "app: small stack"
 
 in
