@@ -505,7 +505,6 @@ fun rename_bvar s t =
 
 local
     fun EQ(t1,t2) = fast_term_eq t1 t2
-    val write = with_flag(MESG_to_string,Lib.I) HOL_MESG
 in
 fun aconv t1 t2 = EQ(t1,t2) orelse
  case(t1,t2)
@@ -518,12 +517,7 @@ fun aconv t1 t2 = EQ(t1,t2) orelse
    | (Clos _, _) => aconv (push_clos t1) t2
    | (_, Clos _) => aconv t1 (push_clos t2)
    | (Const x, Const y) => x = y
-   | (Fv (n1, t1), Fv (n2, t2)) => (
-       if (n1,t1)=(n2,t2)
-       then ()
-       else write ("testing vars " ^ n1 ^ " and " ^ n2);
-       (n1,t1)=(n2,t2)
-   )
+   | (Fv x, Fv y) => x = y
    | (Bv i, Bv j) => i = j
    | _ => false
 end;
