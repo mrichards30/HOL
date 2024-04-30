@@ -595,8 +595,8 @@ fun subst [] = I
   | subst theta =
     let val (fmap,b) = addb theta (emptysubst, true)
         fun vsubs (v as Fv _) = (case peek(fmap,v) of NONE => v | SOME y => y)
-          | vsubs (Comb(Rator,Rand,Fvs)) = Comb(vsubs Rator, vsubs Rand,Fvs)
-          | vsubs (Abs(Bvar,Body,Fvs)) = Abs(Bvar,vsubs Body,Fvs) (*TODO wrong Fvs*)
+          | vsubs (Comb(Rator,Rand,_)) = comb'(vsubs Rator, vsubs Rand)
+          | vsubs (Abs(Bvar,Body,_)) = abs'(Bvar,vsubs Body)
           | vsubs (c as Clos _) = vsubs (push_clos c)
           | vsubs tm = tm
         fun subs tm =
@@ -604,8 +604,8 @@ fun subst [] = I
            of SOME residue => residue
             | NONE =>
               (case tm
-                of Comb(Rator,Rand,Fvs) => Comb(subs Rator, subs Rand,Fvs)
-                 | Abs(Bvar,Body,Fvs) => Abs(Bvar,subs Body,Fvs)
+                of Comb(Rator,Rand,_) => comb'(subs Rator, subs Rand)
+                 | Abs(Bvar,Body,_) => abs'(Bvar,subs Body)
                  | Clos _        => subs(push_clos tm)
                  |   _         => tm)
     in
