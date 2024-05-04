@@ -470,7 +470,7 @@ local val INCOMPAT_TYPES  = Lib.C ERR "incompatible types"
       fun lmk_comb err =
         let fun loop (A,_) [] = A
               | loop (A,typ) (tm::rst) =
-                let val (ty1,ty2) = with_exn Type.dom_rng typ err
+                 let val (ty1,ty2) = with_exn Type.dom_rng typ err
                  in if type_of tm = ty1
                     then loop(comb' (A, tm),ty2) rst
                     else raise err
@@ -514,7 +514,7 @@ fun aconv t1 t2 = EQ(t1,t2) orelse
    | (Abs(Fv(_,ty1),M,_),
       Abs(Fv(_,ty2),N,_)) => ty1=ty2 andalso aconv M N
    | (Clos(e1,b1),
-      Clos(e2,b2)) => (subsEQ aconv (e1,e2) andalso EQ(b1,b2))
+      Clos(e2,b2)) => (subsEQ term_eq (e1,e2) andalso EQ(b1,b2))
                        orelse aconv (push_clos t1) (push_clos t2)
    | (Clos _, _) => aconv (push_clos t1) t2
    | (_, Clos _) => aconv t1 (push_clos t2)
@@ -534,8 +534,8 @@ fun abs' (Bvar, Body) = Abs(Bvar, Body, SOME (free_vars_set1 Body))
 fun beta_conv (Comb(Abs(_,Body,_), Bv 0, _)) = Body
   | beta_conv (Comb(Abs(_,Body,_), Rand, _)) =
      let fun subs((tm as Bv j),i)     = if i=j then Rand else tm
-           | subs(Comb(Rator,Rand,Fvs),i) = comb'(subs(Rator,i),subs(Rand,i))
-           | subs(Abs(v,Body,Fvs),i)      = abs'(v,subs(Body,i+1))
+           | subs(Comb(Rator,Rand,_),i) = comb'(subs(Rator,i),subs(Rand,i))
+           | subs(Abs(v,Body,_),i)      = abs'(v,subs(Body,i+1))
            | subs (tm as Clos _,i)    = subs(push_clos tm,i)
            | subs (tm,_) = tm
      in
@@ -630,8 +630,8 @@ fun inst [] tm = tm
           | DIFF ty => Const(r,(if Type.polymorphic ty then POLY else GRND)ty))
      | inst1 (v as Fv(Name,Ty)) =
          (case Type.ty_sub theta Ty of SAME => v | DIFF ty => Fv(Name, ty))
-     | inst1 (Comb(Rator,Rand,Fvs)) = comb'(inst1 Rator, inst1 Rand)
-     | inst1 (Abs(Bvar,Body,Fvs))   = abs'(inst1 Bvar, inst1 Body)
+     | inst1 (Comb(Rator,Rand,_)) = comb'(inst1 Rator, inst1 Rand)
+     | inst1 (Abs(Bvar,Body,_))   = abs'(inst1 Bvar, inst1 Body)
      | inst1 (t as Clos _)      = inst1(push_clos t)
     in
       inst1 tm
@@ -678,9 +678,9 @@ local
   fun lookup v vmap = case peek (vmap,v) of NONE => v | SOME i => Bv i
   fun increment vmap = transform (fn x => x+1) vmap
   fun bind (v as Fv _) vmap k = k (lookup v vmap)
-    | bind (Comb(M,N,fvs)) vmap k = bind M vmap (fn m =>
+    | bind (Comb(M,N,_)) vmap k = bind M vmap (fn m =>
                                 bind N vmap (fn n => k (comb'(m,n))))
-    | bind (Abs(v,M,fvs)) vmap k  = bind M (increment vmap)
+    | bind (Abs(v,M,_)) vmap k  = bind M (increment vmap)
                                        (fn q => k (abs'(v,q)))
     | bind (t as Clos _) vmap k = bind (push_clos t) vmap k
     | bind tm vmap k = k tm
@@ -830,16 +830,16 @@ val strip_abs = strip_binder NONE;
 
 local exception CLASH
 in
-fun dest_abs(Abs(Bvar as Fv(Name,Ty), Body, Fvs)) =
+fun dest_abs(Abs(Bvar as Fv(Name,Ty), Body, _)) =
     let fun dest (v as (Bv j), i)     = if i=j then Bvar else v
           | dest (v as Fv(s,_), _)    = if Name=s then raise CLASH else v
-          | dest (Comb(Rator,Rand,Fvs),i) = comb'(dest(Rator,i),dest(Rand,i))
-          | dest (Abs(Bvar,Body,Fvs),i)   = abs'(Bvar, dest(Body,i+1))
+          | dest (Comb(Rator,Rand,_),i) = comb'(dest(Rator,i),dest(Rand,i))
+          | dest (Abs(Bvar,Body,_),i)   = abs'(Bvar, dest(Body,i+1))
           | dest (t as Clos _, i)     = dest (push_clos t, i)
           | dest (tm,_) = tm
     in (Bvar, dest(Body,0))
        handle CLASH =>
-              dest_abs(Abs(variant (free_vars Body) Bvar, Body, Fvs))
+              dest_abs(abs'(variant (free_vars Body) Bvar, Body))
     end
   | dest_abs (t as Clos _) = dest_abs (push_clos t)
   | dest_abs _ = raise ERR "dest_abs" "not a lambda abstraction"
@@ -895,7 +895,7 @@ local
     | free _ _ = true
   fun lookup x ids =
    let fun look [] = if HOLset.member(ids,x) then SOME x else NONE
-         | look ({redex,residue}::t) = if aconv x redex then SOME residue else look t
+         | look ({redex,residue}::t) = if term_eq x redex then SOME residue else look t
    in look end
   fun bound_by_scope scoped M = if scoped then not (free M 0) else false
   val tymatch = Type.raw_match_type
@@ -907,7 +907,7 @@ fun RM [] theta = theta
        then MERR "Attempt to capture bound variable"
        else RM rst
             ((case lookup v Id tmS
-               of NONE => if aconv v tm then (tmS,HOLset.add(Id,v))
+               of NONE => if term_eq v tm then (tmS,HOLset.add(Id,v))
                                   else ((v |-> tm)::tmS,Id)
                 | SOME tm' => if aconv tm' tm then S1
                               else MERR ("double bind on variable "^
@@ -946,7 +946,7 @@ fun norm_subst ((tmS,_),(tyS,_)) =
      fun del A [] = A
        | del A ({redex,residue}::rst) =
          del (let val redex' = Theta(redex)
-              in if aconv residue redex' then A else (redex' |-> residue)::A
+              in if term_eq residue redex' then A else (redex' |-> residue)::A
               end) rst
  in (del [] tmS,tyS)
  end
@@ -996,7 +996,7 @@ local val subs_comp = Subst.comp mk_clos
            (0, SOME v)   => vars_sigma_norm (Subst.id, v)
          | (lams,SOME v) => vars_sigma_norm (Subst.shift(lams,Subst.id),v)
          | (lams,NONE)   => Bv lams)
-    | Abs(Bvar,Body,Fvs) => abs'(Bvar, vars_sigma_norm  (Subst.lift(1,s), Body))
+    | Abs(Bvar,Body,_) => abs'(Bvar, vars_sigma_norm  (Subst.lift(1,s), Body))
     | Fv _ => t
     | Clos(Env,Body) => vars_sigma_norm (subs_comp(s,Env), Body)
     | _ => t  (* i.e., a const *)
@@ -1007,7 +1007,7 @@ end
 fun size acc tlist =
     case tlist of
       [] => acc
-    | t :: ts => let
+     | t :: ts => let
       in
         case t of
           Comb(t1,t2,_) => size (1 + acc) (t1 :: t2 :: ts)
