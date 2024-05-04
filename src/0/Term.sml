@@ -77,6 +77,7 @@ fun mk_clos (s, Bv i) =
               | (v, NONE)   => Bv v)
      | mk_clos (s, t as Fv _)     = t
      | mk_clos (s, t as Const _)  = t
+     | mk_clos (s,Clos(Env,Body)) = Clos(Subst.comp mk_clos (s,Env), Body)
      | mk_clos (s,t)              = Clos(s, t);
 
 (*---------------------------------------------------------------------------
