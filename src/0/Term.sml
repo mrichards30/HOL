@@ -539,7 +539,7 @@ fun beta_conv (Comb(Abs(_,Body,_), Bv 0, _)) = Body
      in
        subs (Body,0)
      end
-  | beta_conv (Comb(x as Clos _, Rand, Fvs)) = beta_conv (mk_comb(push_clos x, Rand))
+  | beta_conv (Comb(x as Clos _, Rand, Fvs)) = beta_conv (comb'(push_clos x, Rand))
   | beta_conv (x as Clos _) = beta_conv (push_clos x)
   | beta_conv _ = raise ERR "beta_conv" "not a beta-redex";
 
@@ -563,8 +563,8 @@ fun lazy_beta_conv (Comb(Abs(_,Body,_),Rand,_)) =
 
 local fun pop (tm as Bv i, k) =
            if i=k then raise ERR "eta_conv" "not an eta-redex" else tm
-        | pop (Comb(Rator,Rand,Fvs),k) = Comb(pop(Rator,k), pop(Rand,k),Fvs)
-        | pop (Abs(v,Body,Fvs), k)     = Abs(v,pop(Body, k+1),Fvs)
+        | pop (Comb(Rator,Rand,Fvs),k) = comb'(pop(Rator,k), pop(Rand,k))
+        | pop (Abs(v,Body,Fvs), k)     = abs'(v,pop(Body, k+1))
         | pop (tm as Clos _, k)    = pop (push_clos tm, k)
         | pop (tm,k) = tm
       fun eta_body (Comb(Rator,Bv 0,_)) = pop (Rator,0)
@@ -628,8 +628,8 @@ fun inst [] tm = tm
           | DIFF ty => Const(r,(if Type.polymorphic ty then POLY else GRND)ty))
      | inst1 (v as Fv(Name,Ty)) =
          (case Type.ty_sub theta Ty of SAME => v | DIFF ty => Fv(Name, ty))
-     | inst1 (Comb(Rator,Rand,Fvs)) = Comb(inst1 Rator, inst1 Rand,Fvs)
-     | inst1 (Abs(Bvar,Body,Fvs))   = Abs(inst1 Bvar, inst1 Body,Fvs)
+     | inst1 (Comb(Rator,Rand,Fvs)) = comb'(inst1 Rator, inst1 Rand)
+     | inst1 (Abs(Bvar,Body,Fvs))   = abs'(inst1 Bvar, inst1 Body)
      | inst1 (t as Clos _)      = inst1(push_clos t)
     in
       inst1 tm
@@ -648,6 +648,8 @@ fun dest_comb (Comb (f,x,_)) = (f,x)
        the body.
   ---------------------------------------------------------------------------*)
 local
+    (*fun abs_removing_fv v M = Abs(v, M, SOME $ HOLset.delete(free_vars_set1 M, v))*)
+    fun abs_removing_fv v M = abs'(v, M)
   fun binder_check binder = (* expect type to be (ty1 -> ty2) -> ty3 *)
      let val (fnty,rty) = Type.dom_rng(type_of binder)
          val _ = Type.dom_rng fnty
@@ -659,13 +661,12 @@ local
      handle _ => raise ERR "list_mk_binder"
        "expected binder to have type ((ty1 -> ty2) -> ty3) where\
        \ tyvars of ty3 are all in (ty1->ty2)"
-  fun binderFn NONE = (fn v => fn (M,_) => (Abs(v,M,SOME $ HOLset.delete(free_vars_set1 M, v)),Type.ind))
+  fun binderFn NONE = (fn v => fn (M,_) => (abs_removing_fv v M, Type.ind))
     | binderFn (SOME binder) =
        let val (dty,rty) = binder_check binder
        in fn v => fn (M,Mty) =>
              let val theta = Type.match_type dty (type_of v --> Mty)
-             in (comb' (inst theta binder,
-                       Abs(v,M,SOME $ HOLset.delete(free_vars_set1 M, v))),
+             in (comb' (inst theta binder, abs_removing_fv v M),
                  Type.type_subst theta rty)
              end
        end
@@ -676,9 +677,9 @@ local
   fun increment vmap = transform (fn x => x+1) vmap
   fun bind (v as Fv _) vmap k = k (lookup v vmap)
     | bind (Comb(M,N,fvs)) vmap k = bind M vmap (fn m =>
-                                bind N vmap (fn n => k (Comb(m,n,fvs))))
+                                bind N vmap (fn n => k (comb'(m,n))))
     | bind (Abs(v,M,fvs)) vmap k  = bind M (increment vmap)
-                                       (fn q => k (Abs(v,q,fvs)))
+                                       (fn q => k (abs'(v,q)))
     | bind (t as Clos _) vmap k = bind (push_clos t) vmap k
     | bind tm vmap k = k tm
 in
@@ -830,8 +831,8 @@ in
 fun dest_abs(Abs(Bvar as Fv(Name,Ty), Body, Fvs)) =
     let fun dest (v as (Bv j), i)     = if i=j then Bvar else v
           | dest (v as Fv(s,_), _)    = if Name=s then raise CLASH else v
-          | dest (Comb(Rator,Rand,Fvs),i) = Comb(dest(Rator,i),dest(Rand,i),Fvs)
-          | dest (Abs(Bvar,Body,Fvs),i)   = Abs(Bvar, dest(Body,i+1),Fvs)
+          | dest (Comb(Rator,Rand,Fvs),i) = comb'(dest(Rator,i),dest(Rand,i))
+          | dest (Abs(Bvar,Body,Fvs),i)   = abs'(Bvar, dest(Body,i+1))
           | dest (t as Clos _, i)     = dest (push_clos t, i)
           | dest (tm,_) = tm
     in (Bvar, dest(Body,0))

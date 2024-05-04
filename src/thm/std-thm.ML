@@ -84,7 +84,7 @@ fun dest_imp M =
  let val (Rator,conseq) = with_exn dest_comb M DEST_IMP_ERR
  in if is_comb Rator
     then let val (Rator,ant) = dest_comb Rator
-         in if aconv Rator Term.imp then (ant,conseq) else raise DEST_IMP_ERR
+         in if term_eq Rator Term.imp then (ant,conseq) else raise DEST_IMP_ERR
          end
     else case with_exn dest_thy_const Rator DEST_IMP_ERR
           of {Name="~", Thy="bool",...} => (conseq,Susp.force F)
@@ -879,7 +879,7 @@ fun DISJ_CASES dth ath bth =
 
 fun NOT_INTRO th =
   let val (ant,c) = dest_imp(concl th)
-  in Assert (aconv c (Susp.force F)) "" "";
+  in Assert (term_eq c (Susp.force F)) "" "";
      make_thm Count.NotIntro  (tag th, hypset th, Susp.force mk_neg ant)
   end
   handle HOL_ERR _ => ERR "NOT_INTRO" "";
@@ -934,7 +934,7 @@ end;
  *---------------------------------------------------------------------------*)
 
 fun CCONTR w fth =
-  (Assert (aconv (concl fth) (Susp.force F)) "CCONTR" "";
+  (Assert (term_eq (concl fth) (Susp.force F)) "CCONTR" "";
    make_thm Count.Ccontr
        (tag fth, disch(Susp.force mk_neg w, hypset fth), w)
      handle HOL_ERR _ => ERR "CCONTR" "");
@@ -1154,7 +1154,7 @@ fun check_free_vars tm f =
              :: commafy (map (Lib.quote o fst o dest_var) V)));
 
 fun check_vars tm vars f =
- case op_set_diff aconv (free_vars tm) vars
+ case op_set_diff term_eq (free_vars tm) vars
   of [] => ()
    | extras =>
       raise f (String.concat
@@ -1175,7 +1175,7 @@ fun okConstName cnm =
 fun prim_type_definition (name as {Thy, Tyop}, thm) = let
   val (bv,Body) = with_exn dest_exists (concl thm) TYDEF_FORM_ERR
   val (P,v)     = with_exn dest_comb Body TYDEF_FORM_ERR
-  val _         = assert_exn (aconv bv) v TYDEF_FORM_ERR
+  val _         = assert_exn (term_eq bv) v TYDEF_FORM_ERR
   val Pty       = type_of P
   val (dom,rng) = with_exn Type.dom_rng Pty TYDEF_FORM_ERR
   val tyvars    = Listsort.sort Type.compare (type_vars_in_term P)
