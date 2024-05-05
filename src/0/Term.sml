@@ -150,34 +150,25 @@ fun var_compare (Fv(s1,ty1), Fv(s2,ty2)) =
 
 val empty_varset = HOLset.empty var_compare
                                 
-fun free_vars_list L list =
-    let
-        fun to_fv_tuple (Fv v) = v
-        fun fvs L list =
-            case L of
-                [] => list
-              | t::ts =>
-                case t of
-                    Fv v => fvs ts (Lib.insert v list)
-                  | Bv _ => fvs ts list
-                  | Comb(lhs, rhs, NONE) => fvs (rhs::lhs::ts) list
-                  | Comb(_, _, SOME vs) => fvs ts (union (List.map to_fv_tuple vs) list)
-                  | Abs(Bvar, Body, NONE) => fvs (Body::ts) list
-                  | Abs(_, _, SOME vs) => fvs ts (union (List.map to_fv_tuple vs) list)
-                  | Const _  => fvs ts list
-                  | Clos _ => fvs (push_clos t::ts) list
-    in
-        List.map Fv (fvs L list)
-    end;
+local fun FV (v as Fv _) A k   = k (Lib.insert v A)
+        | FV (Comb(f,x,SOME fvs)) A k   = k (union fvs A)
+        | FV (Comb(f,x,NONE)) A k   = FV f A (fn q => FV x q k)
+        | FV (Abs(_,Body,SOME fvs)) A k = k (union fvs A)
+        | FV (Abs(_,Body,NONE)) A k = FV Body A k
+        | FV (t as Clos _) A k = FV (push_clos t) A k
+        | FV _ A k = k A
+in
+fun free_vars tm = FV tm [] Lib.I
+end;
 
-fun free_vars tm = free_vars_list [tm] [];
+fun free_varsl tm_list = itlist (union o free_vars) tm_list []
 
 (*---------------------------------------------------------------------------*
  * The free variables of a lambda term, in textual order.                    *
  *---------------------------------------------------------------------------*)
 
 fun free_vars_lr tm =
-  let fun FV (Fv v::t) A   = FV t (Lib.insert v A)
+  let fun FV ((v as Fv _)::t) A   = FV t (Lib.insert v A)
         | FV (Bv _::t) A          = FV t A
         | FV (Const _::t) A       = FV t A
         | FV (Comb(M,N,_)::t) A     = FV (M::N::t) A
@@ -185,7 +176,7 @@ fun free_vars_lr tm =
         | FV ((M as Clos _)::t) A = FV (push_clos M::t) A
         | FV [] A = rev A
   in
-     List.map Fv (FV [tm] [])
+     FV [tm] []
   end;
 
 (*---------------------------------------------------------------------------*
@@ -197,22 +188,15 @@ local fun vars L A =
               [] => A
             | t::ts =>
               case t of
-                  Fv p  => vars ts (Lib.insert p A)
+                  p as Fv _  => vars ts (Lib.insert p A)
                 | Comb(Rator,Rand,_) => vars (Rand::Rator::ts) A
                 | Abs(Bvar,Body,_) => vars (Bvar::Body::ts) A
                 | Clos _ => vars (push_clos t::ts) A
                 | _ => vars ts A;
 in
-fun all_vars tm = List.map Fv (vars [tm] [])
-fun all_varsl tm_list  = List.map Fv (vars tm_list [])
+fun all_vars tm = vars [tm] []
+fun all_varsl tm_list  = vars tm_list []
 end;
-
-(*---------------------------------------------------------------------------
-     Support for efficient sets of variables
- ---------------------------------------------------------------------------*)
-
-val free_varsl = C free_vars_list [];
-
 
 (* ----------------------------------------------------------------------
     A total ordering on terms that respects alpha equivalence.
@@ -483,7 +467,7 @@ fun same_const (Const(id1,_)) (Const(id2,_)) = id1 = id2
  *        Making applications                                                *
  *---------------------------------------------------------------------------*)
 
-fun comb' (f, x) = Comb(f, x, SOME (free_vars_list [f,x] []))
+fun comb' (f, x) = Comb(f, x, SOME $ free_varsl [x,f])
                        
 local val INCOMPAT_TYPES  = Lib.C ERR "incompatible types"
       fun lmk_comb err =
@@ -548,7 +532,7 @@ end;
  *        Beta-reduction. Non-renaming.                                      *
  *---------------------------------------------------------------------------*)
 
-fun abs' (Bvar, Body) = Abs(Bvar, Body, SOME $ free_vars_list [Body] [])
+fun abs' (Bvar, Body) = Abs(Bvar, Body, SOME (free_vars Body))
                            
 fun beta_conv (Comb(Abs(_,Body,_), Bv 0, _)) = Body
   | beta_conv (Comb(Abs(_,Body,_), Rand, _)) =
