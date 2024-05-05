@@ -150,29 +150,43 @@ fun var_compare (Fv(s1,ty1), Fv(s2,ty2)) =
 
 val empty_varset = HOLset.empty var_compare
                                 
-fun free_vars_set L set =
-    case L of
-        [] => set
-      | t::ts =>
-        case t of
-            Fv _ => free_vars_set ts (HOLset.add (set, t))
-          | Bv _ => free_vars_set ts set
-          | Comb(lhs, rhs, NONE) => free_vars_set (rhs::lhs::ts) set
-          | Comb(_, _, SOME fvs) => free_vars_set ts (HOLset.union (fvs, set))
-          | Abs(Bvar, Body, NONE) => free_vars_set (Body::ts) set
-          | Abs(_, _, SOME fvs) => free_vars_set ts (HOLset.union (fvs, set))
-          | Const _  => free_vars_set ts set
-          | Clos _ => free_vars_set (push_clos t::ts) set;
+fun free_vars_list L list =
+    let
+        fun to_fv_tuple (Fv v) = v
+        fun fvs L list =
+            case L of
+                [] => list
+              | t::ts =>
+                case t of
+                    Fv v => fvs ts (Lib.insert v list)
+                  | Bv _ => fvs ts list
+                  | Comb(lhs, rhs, NONE) => fvs (rhs::lhs::ts) list
+                  | Comb(_, _, SOME vs) => fvs ts (union (List.map to_fv_tuple vs) list)
+                  | Abs(Bvar, Body, NONE) => fvs (Body::ts) list
+                  | Abs(_, _, SOME vs) => fvs ts (union (List.map to_fv_tuple vs) list)
+                  | Const _  => fvs ts list
+                  | Clos _ => fvs (push_clos t::ts) list
+    in
+        List.map Fv (fvs L list)
+    end;
 
-fun free_vars_set1 t = free_vars_set [t] empty_varset;
-
-val free_vars = HOLset.listItems o free_vars_set1;
+fun free_vars tm = free_vars_list [tm] [];
 
 (*---------------------------------------------------------------------------*
  * The free variables of a lambda term, in textual order.                    *
  *---------------------------------------------------------------------------*)
 
-val free_vars_lr = free_vars;
+fun free_vars_lr tm =
+  let fun FV (Fv v::t) A   = FV t (Lib.insert v A)
+        | FV (Bv _::t) A          = FV t A
+        | FV (Const _::t) A       = FV t A
+        | FV (Comb(M,N,_)::t) A     = FV (M::N::t) A
+        | FV (Abs(_,M,_)::t) A      = FV (M::t) A
+        | FV ((M as Clos _)::t) A = FV (push_clos M::t) A
+        | FV [] A = rev A
+  in
+     List.map Fv (FV [tm] [])
+  end;
 
 (*---------------------------------------------------------------------------*
  * The set of all variables in a term, represented as a list.                *
@@ -197,7 +211,7 @@ end;
      Support for efficient sets of variables
  ---------------------------------------------------------------------------*)
 
-fun free_varsl tm_list = HOLset.listItems (free_vars_set tm_list empty_varset);
+val free_varsl = C free_vars_list [];
 
 
 (* ----------------------------------------------------------------------
@@ -266,7 +280,12 @@ fun all_atoms t = all_atomsl [t] empty_tmset
         Free variables of a term. Tail recursive. Returns a set.
  ---------------------------------------------------------------------------*)
 
-val FVL = free_vars_set;
+fun FVL [] A = A
+  | FVL ((v as Fv _)::rst) A      = FVL rst (HOLset.add(A,v))
+  | FVL (Comb(Rator,Rand,_)::rst) A = FVL (Rator::Rand::rst) A
+  | FVL (Abs(_,Body,_)::rst) A      = FVL (Body::rst) A
+  | FVL ((t as Clos _)::rst) A    = FVL (push_clos t::rst) A
+  | FVL (_::rst) A                = FVL rst A
 
 (* ----------------------------------------------------------------------
     free_in tm M : does tm occur free in M?
@@ -464,7 +483,7 @@ fun same_const (Const(id1,_)) (Const(id2,_)) = id1 = id2
  *        Making applications                                                *
  *---------------------------------------------------------------------------*)
 
-fun comb' (f, x) = Comb(f, x, SOME (free_vars_set [f,x] empty_varset))
+fun comb' (f, x) = Comb(f, x, SOME (free_vars_list [f,x] []))
                        
 local val INCOMPAT_TYPES  = Lib.C ERR "incompatible types"
       fun lmk_comb err =
@@ -529,7 +548,7 @@ end;
  *        Beta-reduction. Non-renaming.                                      *
  *---------------------------------------------------------------------------*)
 
-fun abs' (Bvar, Body) = Abs(Bvar, Body, SOME (free_vars_set1 Body))
+fun abs' (Bvar, Body) = Abs(Bvar, Body, SOME $ free_vars_list [Body] [])
                            
 fun beta_conv (Comb(Abs(_,Body,_), Bv 0, _)) = Body
   | beta_conv (Comb(Abs(_,Body,_), Rand, _)) =
