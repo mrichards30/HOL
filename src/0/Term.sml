@@ -86,8 +86,8 @@ fun mk_clos (s, Bv i) =
     not a delayed substitution.
  ---------------------------------------------------------------------------*)
 
-fun push_clos (Clos(E, Comb(f,x,_))) = Comb(mk_clos(E,f), mk_clos(E,x), NONE)
-  | push_clos (Clos(E, Abs(v,M,_)))  = Abs(v, mk_clos (Subst.lift(1,E),M), NONE)
+fun push_clos (Clos(E, Comb(f,x,_))) = Comb(mk_clos(E,f), mk_clos(E,x), ref NONE)
+  | push_clos (Clos(E, Abs(v,M,_)))  = Abs(v, mk_clos (Subst.lift(1,E),M), ref NONE)
   | push_clos _ = raise ERR "push_clos" "not a subst"
 ;
 
@@ -144,17 +144,23 @@ end;
  *---------------------------------------------------------------------------*)
 
 fun free_vars tm = let
-    fun FV L set =
+    fun compute_fvs_or_update_ref ts fvs_ref set compute_fvs =
+        case !fvs_ref of
+            NONE => let val fvs' = compute_fvs() in (fvs_ref := SOME fvs'; fvs') end
+          | SOME fvs => FV (rev fvs@ts) set
+    and FV L set =
         case L of
             [] => set
           | t::ts =>
             case t of
                 Fv _ => FV ts (Lib.insert t set)
               | Bv _ => FV ts set
-              | Comb(lhs, rhs, NONE) => FV (lhs::rhs::ts) set
-              | Comb(_, _, SOME fvs) => FV (rev fvs@ts) set
-              | Abs(Bvar, Body, NONE) => FV (Body::ts) set
-              | Abs(_, _, SOME fvs) => FV (rev fvs@ts) set
+              | Comb(lhs, rhs, fvs_ref) => compute_fvs_or_update_ref
+                                               ts fvs_ref set
+                                               (fn () => FV (lhs::rhs::ts) set)
+              | Abs(Bvar, Body, fvs_ref) => compute_fvs_or_update_ref
+                                                ts fvs_ref set
+                                                (fn () => FV (Body::ts) set)
               | Const _  => FV ts set
               | Clos _ => FV (push_clos t::ts) set
 in FV [tm] []
@@ -463,8 +469,9 @@ fun same_const (Const(id1,_)) (Const(id2,_)) = id1 = id2
  *---------------------------------------------------------------------------*)
 
 fun comb' (f, x) =
-    let val c = Comb(f, x, NONE)
-    in Comb(f, x, SOME $ free_vars c)
+    let val c = Comb(f, x, ref NONE)
+        val _ = free_vars c
+    in c
     end;
                        
 local val INCOMPAT_TYPES  = Lib.C ERR "incompatible types"
@@ -528,7 +535,10 @@ end;
  *        Beta-reduction. Non-renaming.                                      *
  *---------------------------------------------------------------------------*)
 
-fun abs' (Bvar, Body) = Abs(Bvar, Body, SOME (free_vars Body))
+fun abs' (Bvar, Body) = let
+    val tm = Abs(Bvar, Body, ref NONE)
+    val _ = free_vars tm
+in tm end;
                            
 fun beta_conv (Comb(Abs(_,Body,_), Bv 0, _)) = Body
   | beta_conv (Comb(Abs(_,Body,_), Rand, _)) =
