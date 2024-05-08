@@ -86,8 +86,8 @@ fun mk_clos (s, Bv i) =
     not a delayed substitution.
  ---------------------------------------------------------------------------*)
 
-fun push_clos (Clos(E, Comb(f,x))) = Comb(mk_clos(E,f), mk_clos(E,x), NONE)
-  | push_clos (Clos(E, Abs(v,M)))  = Abs(v, mk_clos (Subst.lift(1,E),M), NONE)
+fun push_clos (Clos(E, Comb(f,x,_))) = Comb(mk_clos(E,f), mk_clos(E,x), NONE)
+  | push_clos (Clos(E, Abs(v,M,_)))  = Abs(v, mk_clos (Subst.lift(1,E),M), NONE)
   | push_clos _ = raise ERR "push_clos" "not a subst"
 ;
 
@@ -143,18 +143,25 @@ end;
  * The free variables of a lambda term. Tail recursive (from Ken Larsen).    *
  *---------------------------------------------------------------------------*)
 
-local fun FV (v as Fv _) A k   = k (Lib.insert v A)
-        | FV (Comb(f,x,SOME fvs)) A k   = k (union fvs A)
-        | FV (Comb(f,x,NONE)) A k   = FV f A (fn q => FV x q k)
-        | FV (Abs(_,Body,SOME fvs)) A k = k (union fvs A)
-        | FV (Abs(_,Body,NONE)) A k = FV Body A k
-        | FV (t as Clos _) A k = FV (push_clos t) A k
-        | FV _ A k = k A
-in
-fun free_vars tm = FV tm [] Lib.I
+fun free_vars tm = let
+    fun FV L set =
+        case L of
+            [] => set
+          | t::ts =>
+            case t of
+                Fv _ => FV ts (Lib.insert t set)
+              | Bv _ => FV ts set
+              | Comb(lhs, rhs, NONE) => FV (rhs::lhs::ts) set
+              | Comb(_, _, SOME fvs) => FV ts (union fvs set)
+              | Abs(Bvar, Body, NONE) => FV (Body::ts) set
+              | Abs(_, _, SOME fvs) => FV ts (union fvs set)
+              | Const _  => FV ts set
+              | Clos _ => FV (push_clos t::ts) set
+in FV [tm] []
 end;
 
-fun free_varsl tm_list = itlist (union o free_vars) tm_list []
+fun free_varsl tm_list = itlist (union o free_vars) tm_list [] 
+
 
 (*---------------------------------------------------------------------------*
  * The free variables of a lambda term, in textual order.                    *
@@ -471,7 +478,10 @@ fun same_const (Const(id1,_)) (Const(id2,_)) = id1 = id2
  *        Making applications                                                *
  *---------------------------------------------------------------------------*)
 
-fun comb' (f, x) = Comb(f, x, SOME $ free_varsl [x,f])
+fun comb' (f, x) =
+    let val c = Comb(f, x, NONE)
+    in Comb(f, x, SOME $ free_vars c)
+    end;
                        
 local val INCOMPAT_TYPES  = Lib.C ERR "incompatible types"
       fun lmk_comb err =
@@ -491,7 +501,7 @@ fun mk_comb(r as (Abs(Fv(_,Ty),_,_), Rand)) =
       if type_of Rand = Ty then comb' r else raise INCOMPAT_TYPES "mk_comb"
   | mk_comb(r as (Clos(_,Abs(Fv(_,Ty),_,_)), Rand)) =
       if type_of Rand = Ty then comb' r else raise INCOMPAT_TYPES "mk_comb"
-  | mk_comb(Rator,Rand) = mk_comb0 (Rator,[Rand])
+  | mk_comb(Rator,Rand) = mk_comb0 (Rator,[Rand]) 
 
 val list_mk_comb = lmk_comb (INCOMPAT_TYPES "list_mk_comb")
 end;
@@ -513,7 +523,8 @@ fun rename_bvar s t =
 
 
 local
-    fun EQ(t1,t2) = fast_term_eq t1 t2
+  fun EQ(t1,t2) = fast_term_eq t1 t2
+  fun subsEQ(s1,s2) = s1 = s2
 in
 fun aconv t1 t2 = EQ(t1,t2) orelse
  case(t1,t2)
