@@ -151,8 +151,8 @@ fun free_vars tm = let
             case t of
                 Fv _ => FV ts (Lib.insert t set)
               | Bv _ => FV ts set
-              | Comb(lhs, rhs, NONE) => FV (rhs::lhs::ts) set
-              | Comb(_, _, SOME fvs) => FV ts (union fvs set)
+              | Comb(lhs, rhs, NONE) => FV (lhs::rhs::ts) set
+              | Comb(_, _, SOME fvs) => FV (rev fvs@ts) set
               | Abs(Bvar, Body, NONE) => FV (Body::ts) set
               | Abs(_, _, SOME fvs) => FV ts (union fvs set)
               | Const _  => FV ts set
