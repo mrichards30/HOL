@@ -1305,4 +1305,11 @@ val _ = shouldfail {checkexn = is_struct_HOL_ERR "Parse",
                    
 val _ = require (check_result null) free_vars ``\x. x + 1``
 
-val _ = require (check_result (fn x => 1 = x)) length (free_vars ``x``)
+val _ = require (check_result (set_eq [("x", alpha)])) List.map dest_var (free_vars “x:'a”);
+
+val _ = require (check_result (set_eq [("x", bool), ("y", bool), ("z", bool)]))
+                (List.map dest_var (free_vars “(x : bool) ∧ (y : bool) ∨ (z : bool)”));
+
+val _ = require (check_result (set_eq [("y", bool), ("z", bool)])) 
+                List.map dest_var (free_vars “!x. x ∧ y ∧ z”));
+                                                              

@@ -154,7 +154,7 @@ fun free_vars tm = let
               | Comb(lhs, rhs, NONE) => FV (lhs::rhs::ts) set
               | Comb(_, _, SOME fvs) => FV (rev fvs@ts) set
               | Abs(Bvar, Body, NONE) => FV (Body::ts) set
-              | Abs(_, _, SOME fvs) => FV ts (union fvs set)
+              | Abs(_, _, SOME fvs) => FV (rev fvs@ts) set
               | Const _  => FV ts set
               | Clos _ => FV (push_clos t::ts) set
 in FV [tm] []
@@ -167,17 +167,7 @@ fun free_varsl tm_list = itlist (union o free_vars) tm_list []
  * The free variables of a lambda term, in textual order.                    *
  *---------------------------------------------------------------------------*)
 
-fun free_vars_lr tm =
-  let fun FV ((v as Fv _)::t) A   = FV t (Lib.insert v A)
-        | FV (Bv _::t) A          = FV t A
-        | FV (Const _::t) A       = FV t A
-        | FV (Comb(M,N,_)::t) A     = FV (M::N::t) A
-        | FV (Abs(_,M,_)::t) A      = FV (M::t) A
-        | FV ((M as Clos _)::t) A = FV (push_clos M::t) A
-        | FV [] A = rev A
-  in
-     FV [tm] []
-  end;
+val free_vars_lr = rev o free_vars;
 
 (*---------------------------------------------------------------------------*
  * The set of all variables in a term, represented as a list.                *
@@ -300,15 +290,9 @@ fun free_in tm =
      does variable v occur free in the assumptions).
  ---------------------------------------------------------------------------*)
 
-fun var_occurs M =
+fun var_occurs M N =
   let val v = (case M of Fv v => v | _ => raise ERR "" "")
-      fun occ (Fv u)             = (v=u)
-        | occ (Bv _)             = false
-        | occ (Const _)          = false
-        | occ (Comb(Rator,Rand,_)) = occ Rand orelse occ Rator
-        | occ (Abs(_,Body,_))      = occ Body
-        | occ (t as Clos _)      = occ (push_clos t)
-   in occ end
+   in List.exists (term_eq M) (free_vars N) end
    handle HOL_ERR _ => raise ERR "var_occurs" "not a variable";
 
 
