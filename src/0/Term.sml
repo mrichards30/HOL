@@ -71,10 +71,10 @@ end
  ---------------------------------------------------------------------------*)
 
 fun mk_clos (s, Bv i) =
-    (case (Subst.exp_rel(s,i))
-      of (0, SOME t) => t
-       | (k, SOME t) => mk_clos (Subst.shift(k,Subst.id), t)
-       | (v, NONE)   => Bv v)
+      (case (Subst.exp_rel(s,i))
+        of (0, SOME t) => t
+         | (k, SOME t) => mk_clos (Subst.shift(k,Subst.id), t)
+         | (v, NONE)   => Bv v)
   | mk_clos (s, t as Fv _)     = t
   | mk_clos (s, t as Const _)  = t
   | mk_clos (s,Clos(Env,Body)) = Clos(Subst.comp mk_clos (s,Env), Body)
@@ -86,9 +86,10 @@ fun mk_clos (s, Bv i) =
     not a delayed substitution.
  ---------------------------------------------------------------------------*)
 
-fun push_clos (Clos(E, Comb(f,x,_))) = Comb(mk_clos(E,f), mk_clos(E,x), NONE)
-     | push_clos (Clos(E, Abs(v,M,_)))  = Abs(v, mk_clos (Subst.lift(1,E),M),NONE)
-     | push_clos _ = raise ERR "push_clos" "not a subst";
+fun push_clos (Clos(E, Comb(f,x))) = Comb(mk_clos(E,f), mk_clos(E,x), NONE)
+  | push_clos (Clos(E, Abs(v,M)))  = Abs(v, mk_clos (Subst.lift(1,E),M), NONE)
+  | push_clos _ = raise ERR "push_clos" "not a subst"
+;
 
 (*---------------------------------------------------------------------------*
  * Computing the type of a term.                                             *
@@ -142,14 +143,6 @@ end;
  * The free variables of a lambda term. Tail recursive (from Ken Larsen).    *
  *---------------------------------------------------------------------------*)
 
-fun var_compare (Fv(s1,ty1), Fv(s2,ty2)) =
-       (case String.compare (s1,s2)
-         of EQUAL => Type.compare (ty1,ty2)
-          | x => x)
-  | var_compare _ = raise ERR "var_compare" "variables required";
-
-val empty_varset = HOLset.empty var_compare
-                                
 local fun FV (v as Fv _) A k   = k (Lib.insert v A)
         | FV (Comb(f,x,SOME fvs)) A k   = k (union fvs A)
         | FV (Comb(f,x,NONE)) A k   = FV f A (fn q => FV x q k)
@@ -197,6 +190,17 @@ in
 fun all_vars tm = vars [tm] []
 fun all_varsl tm_list  = vars tm_list []
 end;
+(*---------------------------------------------------------------------------
+     Support for efficient sets of variables
+ ---------------------------------------------------------------------------*)
+
+fun var_compare (Fv(s1,ty1), Fv(s2,ty2)) =
+       (case String.compare (s1,s2)
+         of EQUAL => Type.compare (ty1,ty2)
+          | x => x)
+  | var_compare _ = raise ERR "var_compare" "variables required";
+
+val empty_varset = HOLset.empty var_compare
 
 (* ----------------------------------------------------------------------
     A total ordering on terms that respects alpha equivalence.
@@ -517,14 +521,11 @@ fun aconv t1 t2 = EQ(t1,t2) orelse
    | (Abs(Fv(_,ty1),M,_),
       Abs(Fv(_,ty2),N,_)) => ty1=ty2 andalso aconv M N
    | (Clos(e1,b1),
-      Clos(e2,b2)) => (subsEQ term_eq (e1,e2) andalso EQ(b1,b2))
+      Clos(e2,b2)) => (subsEQ(e1,e2) andalso EQ(b1,b2))
                        orelse aconv (push_clos t1) (push_clos t2)
    | (Clos _, _) => aconv (push_clos t1) t2
    | (_, Clos _) => aconv t1 (push_clos t2)
-   | (Const x, Const y) => x = y
-   | (Fv x, Fv y) => x = y
-   | (Bv i, Bv j) => i = j
-   | _ => false
+   | (M,N)       => (M=N)
 end;
 
 
@@ -544,7 +545,7 @@ fun beta_conv (Comb(Abs(_,Body,_), Bv 0, _)) = Body
      in
        subs (Body,0)
      end
-  | beta_conv (Comb(x as Clos _, Rand, Fvs)) = beta_conv (comb'(push_clos x, Rand))
+  | beta_conv (Comb(x as Clos _, Rand, _)) = beta_conv (comb'(push_clos x, Rand))
   | beta_conv (x as Clos _) = beta_conv (push_clos x)
   | beta_conv _ = raise ERR "beta_conv" "not a beta-redex";
 
@@ -568,8 +569,8 @@ fun lazy_beta_conv (Comb(Abs(_,Body,_),Rand,_)) =
 
 local fun pop (tm as Bv i, k) =
            if i=k then raise ERR "eta_conv" "not an eta-redex" else tm
-        | pop (Comb(Rator,Rand,Fvs),k) = comb'(pop(Rator,k), pop(Rand,k))
-        | pop (Abs(v,Body,Fvs), k)     = abs'(v,pop(Body, k+1))
+        | pop (Comb(Rator,Rand,_),k) = comb'(pop(Rator,k), pop(Rand,k))
+        | pop (Abs(v,Body,_), k)     = abs'(v,pop(Body, k+1))
         | pop (tm as Clos _, k)    = pop (push_clos tm, k)
         | pop (tm,k) = tm
       fun eta_body (Comb(Rator,Bv 0,_)) = pop (Rator,0)
@@ -709,17 +710,14 @@ end;
 
 val list_mk_abs = list_mk_binder NONE;
 
-fun mk_abs(Bvar as Fv x, Body) =
-    let
-        fun bind (v as Fv y) i        = if x=y then Bv i else v
-          | bind (Comb(Rator,Rand,Fvs)) i = comb'(bind Rator i, bind Rand i)
-          | bind (Abs(Bvar,Body,Fvs)) i   = abs'(Bvar, bind Body (i+1))
+fun mk_abs(Bvar as Fv _, Body) =
+    let fun bind (v as Fv _) i        = if v=Bvar then Bv i else v
+          | bind (Comb(Rator,Rand,_)) i = comb'(bind Rator i, bind Rand i)
+          | bind (Abs(Bvar,Body,_)) i   = abs'(Bvar, bind Body (i+1))
           | bind (t as Clos _) i      = bind (push_clos t) i
           | bind tm _ = tm (* constant *)
-        val Body' = bind Body 0
-                 
     in
-      abs'(Bvar, Body')
+      abs'(Bvar, bind Body 0)
     end
   | mk_abs _ = raise ERR "mk_abs" "Bvar not a variable"
 
@@ -898,7 +896,7 @@ local
     | free _ _ = true
   fun lookup x ids =
    let fun look [] = if HOLset.member(ids,x) then SOME x else NONE
-         | look ({redex,residue}::t) = if term_eq x redex then SOME residue else look t
+         | look ({redex,residue}::t) = if x=redex then SOME residue else look t
    in look end
   fun bound_by_scope scoped M = if scoped then not (free M 0) else false
   val tymatch = Type.raw_match_type
@@ -910,7 +908,7 @@ fun RM [] theta = theta
        then MERR "Attempt to capture bound variable"
        else RM rst
             ((case lookup v Id tmS
-               of NONE => if term_eq v tm then (tmS,HOLset.add(Id,v))
+               of NONE => if v=tm then (tmS,HOLset.add(Id,v))
                                   else ((v |-> tm)::tmS,Id)
                 | SOME tm' => if aconv tm' tm then S1
                               else MERR ("double bind on variable "^
@@ -949,7 +947,7 @@ fun norm_subst ((tmS,_),(tyS,_)) =
      fun del A [] = A
        | del A ({redex,residue}::rst) =
          del (let val redex' = Theta(redex)
-              in if term_eq residue redex' then A else (redex' |-> residue)::A
+              in if residue=redex' then A else (redex' |-> residue)::A
               end) rst
  in (del [] tmS,tyS)
  end
@@ -1214,7 +1212,7 @@ fun dest_term M =
     | Bv _ => raise Fail "dest_term applied to bound variable"
 
 fun identical t1 t2 =
-  term_eq t1 t2 orelse
+  t1 = t2 orelse
   case (t1,t2) of
       (Clos _, _) => identical (push_clos t1) t2
     | (_, Clos _) => identical t1 (push_clos t2)
@@ -1222,7 +1220,7 @@ fun identical t1 t2 =
     | (Fv p1, Fv p2) => p1 = p2
     | (Bv i1, Bv i2) => i1 = i2
     | (Comb(t1,t2,_), Comb(ta,tb,_)) => identical t1 ta andalso identical t2 tb
-    | (Abs(v1,t1,_), Abs (v2, t2, _)) => term_eq v1 v2 andalso identical t1 t2
+    | (Abs(v1,t1,_), Abs (v2, t2, _)) => v1 = v2 andalso identical t1 t2
     | _ => false
 
 end (* Term *)
