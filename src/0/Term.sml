@@ -152,9 +152,9 @@ fun free_vars tm = let
                 Fv _ => FV ts (Lib.insert t set)
               | Bv _ => FV ts set
               | Comb(lhs, rhs, NONE) => FV (lhs::rhs::ts) set
-              | Comb(_, _, SOME fvs) => FV (rev fvs@ts) set
+              | Comb(_, _, SOME fvs) => FV ts (itlist Lib.insert fvs set)
               | Abs(Bvar, Body, NONE) => FV (Body::ts) set
-              | Abs(_, _, SOME fvs) => FV (rev fvs@ts) set
+              | Abs(_, _, SOME fvs) => FV ts (itlist Lib.insert fvs set)
               | Const _  => FV ts set
               | Clos _ => FV (push_clos t::ts) set
 in FV [tm] []
