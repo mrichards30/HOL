@@ -37,8 +37,8 @@ fun to_hol_type (GRND ty) = ty
 type tmconst = id * holty
 
 datatype term = Fv of string * hol_type
-              | Bv of int 
-              | Const of tmconst 
+              | Bv of int
+              | Const of tmconst
               | Comb  of term * term * term OrderedHOLset.ordered_set option
               | Abs   of term * term * term OrderedHOLset.ordered_set option
               | Clos  of term Subst.subs * term;
