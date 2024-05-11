@@ -108,5 +108,12 @@ fun comp mk_cl =
   end
 ;
 
+fun subsEQ is_eq (s1, s2) =
+    case (s1, s2) of
+        (Id, Id) => true
+      | (Cons(s1, x1), Cons (s2, x2)) => subsEQ is_eq (s1, s2) andalso is_eq x1 x2
+      | (Shift(i1, s1), Shift(i2, s2)) => i1 = i2 andalso subsEQ is_eq (s1, s2)
+      | (Lift(i1, s1), Lift(i2, s2)) => i1 = i2 andalso subsEQ is_eq (s1, s2)
+      | _ => false
 
 end;

@@ -17,13 +17,14 @@ open Feedback Lib Subst KernelTypes
 val kernelid = "stdknl"
 
 type 'a set = 'a HOLset.set;
+type 'a ordered_set = 'a OrderedHOLset.ordered_set;
 
 val ERR = mk_HOL_ERR "Term";
 val WARN = HOL_WARNING "Term";
 
 val --> = Type.-->;   infixr 3 -->;
 
-infix $; 
+infix $;
 
 infix |-> ##;
 
@@ -143,24 +144,35 @@ end;
  * The free variables of a lambda term. Tail recursive (from Ken Larsen).    *
  *---------------------------------------------------------------------------*)
 
-fun free_vars tm = let
+fun var_compare (Fv(s1,ty1), Fv(s2,ty2)) =
+       (case String.compare (s1,s2)
+         of EQUAL => Type.compare (ty1,ty2)
+          | x => x)
+  | var_compare _ = raise ERR "var_compare" "variables required";
+
+fun free_vars_set tm = let
     fun FV L set =
         case L of
             [] => set
           | t::ts =>
             case t of
-                Fv _ => FV ts (Lib.insert t set)
+                Fv _ => FV ts (OrderedHOLset.add(set, t))
               | Bv _ => FV ts set
               | Comb(lhs, rhs, NONE) => FV (lhs::rhs::ts) set
-              | Comb(_, _, SOME fvs) => FV ts (itlist Lib.insert fvs set)
+              | Comb(_, _, SOME fvs) => FV ts (OrderedHOLset.union(fvs,set))
               | Abs(Bvar, Body, NONE) => FV (Body::ts) set
-              | Abs(_, _, SOME fvs) => FV ts (itlist Lib.insert fvs set)
+              | Abs(_, _, SOME fvs) => FV ts (OrderedHOLset.union(fvs,set))
               | Const _  => FV ts set
               | Clos _ => FV (push_clos t::ts) set
-in FV [tm] []
+in FV [tm] (OrderedHOLset.empty var_compare)
 end;
 
-fun free_varsl tm_list = itlist (union o free_vars) tm_list [] 
+val free_vars = OrderedHOLset.listItems o free_vars_set
+
+fun free_varsl tm_list = let
+    val empty_set = OrderedHOLset.empty var_compare
+    val fvs = itlist (curry OrderedHOLset.union o free_vars_set) tm_list empty_set
+in OrderedHOLset.listItems fvs end;
 
 
 (*---------------------------------------------------------------------------*
@@ -178,24 +190,18 @@ local fun vars L A =
               [] => A
             | t::ts =>
               case t of
-                  p as Fv _  => vars ts (Lib.insert p A)
+                  Fv p  => vars ts (Lib.insert p A)
                 | Comb(Rator,Rand,_) => vars (Rand::Rator::ts) A
                 | Abs(Bvar,Body,_) => vars (Bvar::Body::ts) A
                 | Clos _ => vars (push_clos t::ts) A
                 | _ => vars ts A;
 in
-fun all_vars tm = vars [tm] []
-fun all_varsl tm_list  = vars tm_list []
+fun all_vars tm = List.map Fv (vars [tm] [])
+fun all_varsl tm_list  = List.map Fv (vars tm_list [])
 end;
 (*---------------------------------------------------------------------------
      Support for efficient sets of variables
  ---------------------------------------------------------------------------*)
-
-fun var_compare (Fv(s1,ty1), Fv(s2,ty2)) =
-       (case String.compare (s1,s2)
-         of EQUAL => Type.compare (ty1,ty2)
-          | x => x)
-  | var_compare _ = raise ERR "var_compare" "variables required";
 
 val empty_varset = HOLset.empty var_compare
 
@@ -292,7 +298,7 @@ fun free_in tm =
 
 fun var_occurs M N =
   let val v = (case M of Fv v => v | _ => raise ERR "" "")
-   in List.exists (term_eq M) (free_vars N) end
+   in OrderedHOLset.member (free_vars_set N, M) end
    handle HOL_ERR _ => raise ERR "var_occurs" "not a variable";
 
 
@@ -464,9 +470,9 @@ fun same_const (Const(id1,_)) (Const(id2,_)) = id1 = id2
 
 fun comb' (f, x) =
     let val c = Comb(f, x, NONE)
-    in Comb(f, x, SOME $ free_vars c)
+    in Comb(f, x, SOME $ free_vars_set c)
     end;
-                       
+
 local val INCOMPAT_TYPES  = Lib.C ERR "incompatible types"
       fun lmk_comb err =
         let fun loop (A,_) [] = A
@@ -485,7 +491,7 @@ fun mk_comb(r as (Abs(Fv(_,Ty),_,_), Rand)) =
       if type_of Rand = Ty then comb' r else raise INCOMPAT_TYPES "mk_comb"
   | mk_comb(r as (Clos(_,Abs(Fv(_,Ty),_,_)), Rand)) =
       if type_of Rand = Ty then comb' r else raise INCOMPAT_TYPES "mk_comb"
-  | mk_comb(Rator,Rand) = mk_comb0 (Rator,[Rand]) 
+  | mk_comb(Rator,Rand) = mk_comb0 (Rator,[Rand])
 
 val list_mk_comb = lmk_comb (INCOMPAT_TYPES "list_mk_comb")
 end;
@@ -508,7 +514,6 @@ fun rename_bvar s t =
 
 local
   fun EQ(t1,t2) = fast_term_eq t1 t2
-  fun subsEQ(s1,s2) = s1 = s2
 in
 fun aconv t1 t2 = EQ(t1,t2) orelse
  case(t1,t2)
@@ -516,11 +521,11 @@ fun aconv t1 t2 = EQ(t1,t2) orelse
    | (Abs(Fv(_,ty1),M,_),
       Abs(Fv(_,ty2),N,_)) => ty1=ty2 andalso aconv M N
    | (Clos(e1,b1),
-      Clos(e2,b2)) => (subsEQ(e1,e2) andalso EQ(b1,b2))
+      Clos(e2,b2)) => (subsEQ aconv (e1,e2) andalso EQ(b1,b2))
                        orelse aconv (push_clos t1) (push_clos t2)
    | (Clos _, _) => aconv (push_clos t1) t2
    | (_, Clos _) => aconv t1 (push_clos t2)
-   | (M,N)       => (M=N)
+   | (M,N)       => term_eq M N
 end;
 
 
@@ -528,8 +533,8 @@ end;
  *        Beta-reduction. Non-renaming.                                      *
  *---------------------------------------------------------------------------*)
 
-fun abs' (Bvar, Body) = Abs(Bvar, Body, SOME (free_vars Body))
-                           
+fun abs' (Bvar, Body) = Abs(Bvar, Body, SOME (free_vars_set Body))
+
 fun beta_conv (Comb(Abs(_,Body,_), Bv 0, _)) = Body
   | beta_conv (Comb(Abs(_,Body,_), Rand, _)) =
      let fun subs((tm as Bv j),i)     = if i=j then Rand else tm
@@ -705,8 +710,8 @@ end;
 
 val list_mk_abs = list_mk_binder NONE;
 
-fun mk_abs(Bvar as Fv _, Body) =
-    let fun bind (v as Fv _) i        = if v=Bvar then Bv i else v
+fun mk_abs(Bvar as Fv x, Body) =
+    let fun bind (v as Fv y) i        = if x=y then Bv i else v
           | bind (Comb(Rator,Rand,_)) i = comb'(bind Rator i, bind Rand i)
           | bind (Abs(Bvar,Body,_)) i   = abs'(Bvar, bind Body (i+1))
           | bind (t as Clos _) i      = bind (push_clos t) i
@@ -891,7 +896,7 @@ local
     | free _ _ = true
   fun lookup x ids =
    let fun look [] = if HOLset.member(ids,x) then SOME x else NONE
-         | look ({redex,residue}::t) = if x=redex then SOME residue else look t
+         | look ({redex,residue}::t) = if term_eq x redex then SOME residue else look t
    in look end
   fun bound_by_scope scoped M = if scoped then not (free M 0) else false
   val tymatch = Type.raw_match_type
@@ -903,7 +908,7 @@ fun RM [] theta = theta
        then MERR "Attempt to capture bound variable"
        else RM rst
             ((case lookup v Id tmS
-               of NONE => if v=tm then (tmS,HOLset.add(Id,v))
+               of NONE => if term_eq v tm then (tmS,HOLset.add(Id,v))
                                   else ((v |-> tm)::tmS,Id)
                 | SOME tm' => if aconv tm' tm then S1
                               else MERR ("double bind on variable "^
@@ -942,7 +947,7 @@ fun norm_subst ((tmS,_),(tyS,_)) =
      fun del A [] = A
        | del A ({redex,residue}::rst) =
          del (let val redex' = Theta(redex)
-              in if residue=redex' then A else (redex' |-> residue)::A
+              in if term_eq residue redex' then A else (redex' |-> residue)::A
               end) rst
  in (del [] tmS,tyS)
  end
@@ -1207,7 +1212,7 @@ fun dest_term M =
     | Bv _ => raise Fail "dest_term applied to bound variable"
 
 fun identical t1 t2 =
-  t1 = t2 orelse
+  term_eq t1 t2 orelse
   case (t1,t2) of
       (Clos _, _) => identical (push_clos t1) t2
     | (_, Clos _) => identical t1 (push_clos t2)
@@ -1215,7 +1220,7 @@ fun identical t1 t2 =
     | (Fv p1, Fv p2) => p1 = p2
     | (Bv i1, Bv i2) => i1 = i2
     | (Comb(t1,t2,_), Comb(ta,tb,_)) => identical t1 ta andalso identical t2 tb
-    | (Abs(v1,t1,_), Abs (v2, t2, _)) => v1 = v2 andalso identical t1 t2
+    | (Abs(v1,t1,_), Abs (v2, t2, _)) => term_eq v1 v2 andalso identical t1 t2
     | _ => false
 
 end (* Term *)
