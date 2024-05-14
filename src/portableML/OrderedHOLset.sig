@@ -7,4 +7,6 @@ sig
     val setItems : 'a ordered_set -> 'a HOLset.set
     val member : ('a ordered_set * 'a) -> bool
     val union : ('a ordered_set * 'a ordered_set) -> 'a ordered_set
+    val revAppend : ('a ordered_set * 'a ordered_set) -> 'a ordered_set
+    val fromSet : 'a HOLset.set -> 'a ordered_set
 end

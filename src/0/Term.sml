@@ -150,61 +150,6 @@ fun var_compare (Fv(s1,ty1), Fv(s2,ty2)) =
           | x => x)
   | var_compare _ = raise ERR "var_compare" "variables required";
 
-fun free_vars_set tm = let
-    fun FV L set =
-        case L of
-            [] => set
-          | t::ts =>
-            case t of
-                Fv _ => FV ts (OrderedHOLset.add(set, t))
-              | Bv _ => FV ts set
-              | Comb(lhs, rhs, NONE) => FV (lhs::rhs::ts) set
-              | Comb(_, _, SOME fvs) => FV ts (OrderedHOLset.union(fvs,set))
-              | Abs(Bvar, Body, NONE) => FV (Body::ts) set
-              | Abs(_, _, SOME fvs) => FV ts (OrderedHOLset.union(fvs,set))
-              | Const _  => FV ts set
-              | Clos _ => FV (push_clos t::ts) set
-in FV [tm] (OrderedHOLset.empty var_compare)
-end;
-
-val free_vars = OrderedHOLset.listItems o free_vars_set
-
-fun free_varsl tm_list = let
-    val empty_set = OrderedHOLset.empty var_compare
-    val fvs = itlist (curry OrderedHOLset.union o free_vars_set) tm_list empty_set
-in OrderedHOLset.listItems fvs end;
-
-
-(*---------------------------------------------------------------------------*
- * The free variables of a lambda term, in textual order.                    *
- *---------------------------------------------------------------------------*)
-
-val free_vars_lr = rev o free_vars;
-
-(*---------------------------------------------------------------------------*
- * The set of all variables in a term, represented as a list.                *
- *---------------------------------------------------------------------------*)
-
-local fun vars L A =
-          case L of
-              [] => A
-            | t::ts =>
-              case t of
-                  Fv p  => vars ts (Lib.insert p A)
-                | Comb(Rator,Rand,_) => vars (Rand::Rator::ts) A
-                | Abs(Bvar,Body,_) => vars (Bvar::Body::ts) A
-                | Clos _ => vars (push_clos t::ts) A
-                | _ => vars ts A;
-in
-fun all_vars tm = List.map Fv (vars [tm] [])
-fun all_varsl tm_list  = List.map Fv (vars tm_list [])
-end;
-(*---------------------------------------------------------------------------
-     Support for efficient sets of variables
- ---------------------------------------------------------------------------*)
-
-val empty_varset = HOLset.empty var_compare
-
 (* ----------------------------------------------------------------------
     A total ordering on terms that respects alpha equivalence.
     Fv < Bv < Const < Comb < Abs
@@ -244,6 +189,61 @@ fun compare (p as (t1,t2)) =
 val empty_tmset = HOLset.empty compare
 fun term_eq t1 t2 = compare(t1,t2) = EQUAL
 
+local
+    fun FV L set =
+        case L of
+            [] => set
+          | t::ts =>
+            case t of
+                Fv _ => FV ts (OrderedHOLset.add(set, t))
+              | Bv _ => FV ts set
+              | Comb(lhs, rhs, NONE) => FV (lhs::rhs::ts) set
+              | Comb(_, _, SOME fvs) => FV ts (OrderedHOLset.union(fvs,set))
+              | Abs(Bvar, Body, NONE) => FV (Body::ts) set
+              | Abs(_, _, SOME fvs) => FV ts (OrderedHOLset.union(fvs,set))
+              | Const _  => FV ts set
+              | Clos _ => FV (push_clos t::ts) set
+in
+fun free_vars_set tm = FV [tm] (OrderedHOLset.empty var_compare)
+fun FVL list A = OrderedHOLset.setItems $ FV list (OrderedHOLset.fromSet A)
+end;
+
+val free_vars = OrderedHOLset.listItems o free_vars_set
+
+fun free_varsl tm_list = itlist (op_union term_eq o free_vars) tm_list [];
+
+(*---------------------------------------------------------------------------*
+ * The free variables of a lambda term, in textual order.                    *
+ *---------------------------------------------------------------------------*)
+
+val free_vars_lr = rev o free_vars;
+
+(*---------------------------------------------------------------------------
+     Support for efficient sets of variables
+ ---------------------------------------------------------------------------*)
+
+val empty_varset = HOLset.empty var_compare
+
+(*---------------------------------------------------------------------------*
+ * The set of all variables in a term, represented as a list.                *
+ *---------------------------------------------------------------------------*)
+
+local fun vars L A =
+          case L of
+              [] => A
+            | t::ts =>
+              case t of
+                  Fv p  => vars ts (Lib.insert p A)
+                | Comb(Rator,Rand,_) => vars (Rator::Rand::ts) A
+                | Abs(Bvar,Body,_) => vars (Bvar::Body::ts) A
+                | Clos _ => vars (push_clos t::ts) A
+                | _ => vars ts A;
+in
+fun all_vars tm = List.map Fv (vars [tm] [])
+end;
+
+fun all_varsl tm_list = itlist (op_union term_eq o all_vars) tm_list []
+
 (* ----------------------------------------------------------------------
     All "atoms" (variables (bound or free) and constants).
 
@@ -266,17 +266,6 @@ fun all_atomsl tlist A =
         end
 
 fun all_atoms t = all_atomsl [t] empty_tmset
-
-(*---------------------------------------------------------------------------
-        Free variables of a term. Tail recursive. Returns a set.
- ---------------------------------------------------------------------------*)
-
-fun FVL [] A = A
-  | FVL ((v as Fv _)::rst) A      = FVL rst (HOLset.add(A,v))
-  | FVL (Comb(Rator,Rand,_)::rst) A = FVL (Rator::Rand::rst) A
-  | FVL (Abs(_,Body,_)::rst) A      = FVL (Body::rst) A
-  | FVL ((t as Clos _)::rst) A    = FVL (push_clos t::rst) A
-  | FVL (_::rst) A                = FVL rst A
 
 (* ----------------------------------------------------------------------
     free_in tm M : does tm occur free in M?
