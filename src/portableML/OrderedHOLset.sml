@@ -36,4 +36,11 @@ struct
 
   fun fromSet set = (set, HOLset.listItems set)
 
+  fun fromList ordering list = let
+      fun toSet list =
+          case list of
+              [] => HOLset.empty ordering
+            | x::xs => HOLset.add (toSet xs, x)
+  in (toSet list, list) end;
+
 end;

@@ -24,9 +24,7 @@ val WARN = HOL_WARNING "Term";
 
 val --> = Type.-->;   infixr 3 -->;
 
-infix $;
-
-infix |-> ##;
+infix |-> ## $;
 
 (*---------------------------------------------------------------------------
                Create the signature for HOL terms
