@@ -1199,7 +1199,7 @@ fun dest_term M =
     | Bv _ => raise Fail "dest_term applied to bound variable"
 
 fun identical t1 t2 =
-  term_eq t1 t2 orelse
+  fast_term_eq t1 t2 orelse
   case (t1,t2) of
       (Clos _, _) => identical (push_clos t1) t2
     | (_, Clos _) => identical t1 (push_clos t2)
@@ -1207,7 +1207,7 @@ fun identical t1 t2 =
     | (Fv p1, Fv p2) => p1 = p2
     | (Bv i1, Bv i2) => i1 = i2
     | (Comb(t1,t2,_), Comb(ta,tb,_)) => identical t1 ta andalso identical t2 tb
-    | (Abs(v1,t1,_), Abs (v2, t2, _)) => term_eq v1 v2 andalso identical t1 t2
+    | (Abs(Fv v1,t1,_), Abs (Fv v2, t2, _)) => v1 = v2 andalso identical t1 t2
     | _ => false
 
 end (* Term *)
