@@ -1302,14 +1302,38 @@ val _ = shouldfail {checkexn = is_struct_HOL_ERR "Parse",
                     printresult = with_flag (show_types, true) term_to_string,
                     testfn = Parse.Term o single o QUOTE}
                    "!b:bool'. p /\\ b"
-                   
-val _ = require (check_result null) free_vars ``\x. x + 1``
 
-val _ = require (check_result (set_eq [("x", alpha)])) List.map dest_var (free_vars “x:'a”);
+val _ = tprint "Testing free variables 1"
+val _ = require (check_result (set_eq [("x", alpha)]))
+                (List.map dest_var o free_vars)
+                “x:'a”;
 
-val _ = require (check_result (set_eq [("x", bool), ("y", bool), ("z", bool)]))
-                (List.map dest_var (free_vars “(x : bool) ∧ (y : bool) ∨ (z : bool)”));
+val _ = tprint "Testing free variables 2"
+val _ = require (check_result (curry (op=) [("z", bool), ("y", bool), ("x", bool)]))
+                (List.map dest_var o free_vars)
+                “(x : bool) ∧ (y : bool) ∨ (z : bool)”;
 
-val _ = require (check_result (set_eq [("y", bool), ("z", bool)])) 
-                List.map dest_var (free_vars “!x. x ∧ y ∧ z”));
-                                                              
+val _ = tprint "Testing free variables 3"
+val _ = require (check_result (curry (op=) [("z", bool), ("y", bool)]))
+                (List.map dest_var o free_vars)
+                “!x. x ∧ y ∨ z”;
+
+val _ = tprint "Testing free variables of a list (free_varsl) 1"
+val _ = require (check_result (curry (op=) [("z", bool), ("y", bool), ("x", bool)]))
+                (List.map dest_var o free_varsl)
+                [“!x. x ∧ y ∧ z”, “x ∧ y”];
+
+val _ = tprint "Testing free variables of a list (free_varsl) 2"
+val _ = require (check_result (curry (op=) [("x", bool), ("z", bool), ("y", bool)]))
+                (List.map dest_var o free_varsl)
+                [“x ∧ y”, “!x. x ∧ y ∧ z”];
+
+val _ = tprint "Testing free_in 1"
+val _ = require (check_result (fn is_free => not is_free))
+                (var_occurs “x:bool”)
+                “!x. (x ∧ y ∨ z)”;
+
+val _ = tprint "Testing free_in 2"
+val _ = require (check_result (fn is_free => is_free))
+                (var_occurs “y:bool”)
+                “!x. (x ∧ y ∨ z)”;
