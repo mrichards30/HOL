@@ -39,8 +39,8 @@ type tmconst = id * holty
 datatype term = Fv of string * hol_type
               | Bv of int
               | Const of tmconst
-              | Comb  of term * term * term OrderedHOLset.ordered_set option
-              | Abs   of term * term * term OrderedHOLset.ordered_set option
+              | Comb  of term * term * term OrderedHOLset.ordered_set option ref
+              | Abs   of term * term * term OrderedHOLset.ordered_set option ref
               | Clos  of term Subst.subs * term;
 
 (*---------------------------------------------------------------------------
