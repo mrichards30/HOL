@@ -43,4 +43,6 @@ struct
             | x::xs => HOLset.add (toSet xs, x)
   in (toSet list, list) end;
 
+  fun singleton (ordering, x) = add (empty ordering, x)
+
 end;

@@ -187,6 +187,19 @@ fun compare (p as (t1,t2)) =
 val empty_tmset = HOLset.empty compare
 fun term_eq t1 t2 = compare(t1,t2) = EQUAL
 
+fun term_direct_eq t1 t2 =
+    case (t1, t2) of
+        (Fv x, Fv y) => x = y
+      | (Bv i, Bv j) => i = j
+      | (Const x, Const y) => x = y
+      | (Abs(Bvar1, Body1, _), Abs(Bvar2, Body2, _)) =>
+        term_direct_eq Bvar1 Bvar2 andalso term_direct_eq Body1 Body2
+      | (Comb(A, B, _), Comb(M, N, _)) =>
+        term_direct_eq A M andalso term_direct_eq B N
+      | (Clos(s1, t1), Clos(s2, t2)) =>
+        subsEQ term_direct_eq (s1, s2) andalso term_direct_eq t1 t2
+      | _ => false
+
 local
     fun FV L set =
         case L of
@@ -209,6 +222,14 @@ end;
 val free_vars = OrderedHOLset.listItems o free_vars_set
 
 fun free_varsl tm_list = itlist (op_union term_eq o free_vars) tm_list [];
+
+fun lazy_free_vars tm =
+    case tm of
+        Fv _ => SOME $ OrderedHOLset.singleton(var_compare, tm)
+      | Comb(_, _, fvs) => fvs
+      | Abs(_, _, fvs) => fvs
+      | Clos _ => NONE
+      | _ => SOME $ OrderedHOLset.empty var_compare
 
 (*---------------------------------------------------------------------------*
  * The free variables of a lambda term, in textual order.                    *
@@ -455,10 +476,15 @@ fun same_const (Const(id1,_)) (Const(id2,_)) = id1 = id2
  *        Making applications                                                *
  *---------------------------------------------------------------------------*)
 
-fun comb' (f, x) =
-    let val c = Comb(f, x, NONE)
-    in Comb(f, x, SOME $ free_vars_set c)
-    end;
+fun comb' (M, N) = let
+    infix >>=
+    fun opt >>= f = Option.mapPartial f opt
+    val fvs = lazy_free_vars M
+      >>= (fn M_fvs => lazy_free_vars N
+      >>= (fn N_fvs => SOME $ OrderedHOLset.union(N_fvs, M_fvs)))
+in
+    Comb(M, N, fvs)
+end;
 
 local val INCOMPAT_TYPES  = Lib.C ERR "incompatible types"
       fun lmk_comb err =
@@ -512,7 +538,7 @@ fun aconv t1 t2 = EQ(t1,t2) orelse
                        orelse aconv (push_clos t1) (push_clos t2)
    | (Clos _, _) => aconv (push_clos t1) t2
    | (_, Clos _) => aconv t1 (push_clos t2)
-   | (M,N)       => term_eq M N
+   | (M,N)       => term_direct_eq M N
 end;
 
 
@@ -520,7 +546,7 @@ end;
  *        Beta-reduction. Non-renaming.                                      *
  *---------------------------------------------------------------------------*)
 
-fun abs' (Bvar, Body) = Abs(Bvar, Body, SOME (free_vars_set Body))
+fun abs' (Bvar, Body) = Abs(Bvar, Body, lazy_free_vars Body)
 
 fun beta_conv (Comb(Abs(_,Body,_), Bv 0, _)) = Body
   | beta_conv (Comb(Abs(_,Body,_), Rand, _)) =
@@ -641,8 +667,6 @@ fun dest_comb (Comb (f,x,_)) = (f,x)
        the body.
   ---------------------------------------------------------------------------*)
 local
-    (*fun abs_removing_fv v M = Abs(v, M, SOME $ HOLset.delete(free_vars_set1 M, v))*)
-    fun abs_removing_fv v M = abs'(v, M)
   fun binder_check binder = (* expect type to be (ty1 -> ty2) -> ty3 *)
      let val (fnty,rty) = Type.dom_rng(type_of binder)
          val _ = Type.dom_rng fnty
@@ -654,12 +678,12 @@ local
      handle _ => raise ERR "list_mk_binder"
        "expected binder to have type ((ty1 -> ty2) -> ty3) where\
        \ tyvars of ty3 are all in (ty1->ty2)"
-  fun binderFn NONE = (fn v => fn (M,_) => (abs_removing_fv v M, Type.ind))
+  fun binderFn NONE = (fn v => fn (M,_) => (abs'(v, M), Type.ind))
     | binderFn (SOME binder) =
        let val (dty,rty) = binder_check binder
        in fn v => fn (M,Mty) =>
              let val theta = Type.match_type dty (type_of v --> Mty)
-             in (comb' (inst theta binder, abs_removing_fv v M),
+             in (comb' (inst theta binder, abs'(v, M)),
                  Type.type_subst theta rty)
              end
        end
@@ -883,7 +907,7 @@ local
     | free _ _ = true
   fun lookup x ids =
    let fun look [] = if HOLset.member(ids,x) then SOME x else NONE
-         | look ({redex,residue}::t) = if term_eq x redex then SOME residue else look t
+         | look ({redex,residue}::t) = if term_direct_eq x redex then SOME residue else look t
    in look end
   fun bound_by_scope scoped M = if scoped then not (free M 0) else false
   val tymatch = Type.raw_match_type
@@ -895,7 +919,7 @@ fun RM [] theta = theta
        then MERR "Attempt to capture bound variable"
        else RM rst
             ((case lookup v Id tmS
-               of NONE => if term_eq v tm then (tmS,HOLset.add(Id,v))
+               of NONE => if term_direct_eq v tm then (tmS,HOLset.add(Id,v))
                                   else ((v |-> tm)::tmS,Id)
                 | SOME tm' => if aconv tm' tm then S1
                               else MERR ("double bind on variable "^
@@ -934,7 +958,7 @@ fun norm_subst ((tmS,_),(tyS,_)) =
      fun del A [] = A
        | del A ({redex,residue}::rst) =
          del (let val redex' = Theta(redex)
-              in if term_eq residue redex' then A else (redex' |-> residue)::A
+              in if term_direct_eq residue redex' then A else (redex' |-> residue)::A
               end) rst
  in (del [] tmS,tyS)
  end
@@ -995,7 +1019,7 @@ end
 fun size acc tlist =
     case tlist of
       [] => acc
-     | t :: ts => let
+    | t :: ts => let
       in
         case t of
           Comb(t1,t2,_) => size (1 + acc) (t1 :: t2 :: ts)
@@ -1199,7 +1223,7 @@ fun dest_term M =
     | Bv _ => raise Fail "dest_term applied to bound variable"
 
 fun identical t1 t2 =
-  fast_term_eq t1 t2 orelse
+  term_direct_eq t1 t2 orelse
   case (t1,t2) of
       (Clos _, _) => identical (push_clos t1) t2
     | (_, Clos _) => identical t1 (push_clos t2)

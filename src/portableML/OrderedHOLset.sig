@@ -10,4 +10,5 @@ sig
     val revAppend : ('a ordered_set * 'a ordered_set) -> 'a ordered_set
     val fromSet : 'a HOLset.set -> 'a ordered_set
     val fromList : ('a * 'a -> order) -> 'a list -> 'a ordered_set
+    val singleton : ('a * 'a -> order) * 'a -> 'a ordered_set
 end
