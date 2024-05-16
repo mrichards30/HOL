@@ -22,10 +22,7 @@ val ERR = mk_HOL_ERR "Term";
 val WARN = HOL_WARNING "Term";
 
 val --> = Type.-->;   infixr 3 -->;
-
-infix $; 
-
-infix |-> ##;
+infix |-> ## $;
 
 (*---------------------------------------------------------------------------
                Create the signature for HOL terms
@@ -160,8 +157,15 @@ fun free_vars tm = let
 in FV [tm] []
 end;
 
-fun free_varsl tm_list = itlist (union o free_vars) tm_list [] 
+fun free_varsl tm_list = itlist (union o free_vars) tm_list []
 
+fun lazy_free_vars tm =
+    case tm of
+        Fv _ => SOME [tm]
+      | Comb(_, _, fvs) => !fvs
+      | Abs(_, _, fvs) => !fvs
+      | Clos _ => NONE
+      | _ => SOME []
 
 (*---------------------------------------------------------------------------*
  * The free variables of a lambda term, in textual order.                    *
@@ -462,11 +466,16 @@ fun same_const (Const(id1,_)) (Const(id2,_)) = id1 = id2
  *        Making applications                                                *
  *---------------------------------------------------------------------------*)
 
-fun comb' (f, x) =
-    let val c = Comb(f, x, NONE)
-    in Comb(f, x, SOME $ free_vars c)
-    end;
-                       
+fun comb' (M, N) = let
+    infix >>=
+    fun opt >>= f = Option.mapPartial f opt
+    val fvs = lazy_free_vars M
+      >>= (fn M_fvs => lazy_free_vars N
+      >>= (fn N_fvs => SOME $ itlist (op_insert term_eq) N_fvs M_fvs))
+in
+    Comb(M, N, fvs)
+end;
+
 local val INCOMPAT_TYPES  = Lib.C ERR "incompatible types"
       fun lmk_comb err =
         let fun loop (A,_) [] = A
@@ -485,7 +494,7 @@ fun mk_comb(r as (Abs(Fv(_,Ty),_,_), Rand)) =
       if type_of Rand = Ty then comb' r else raise INCOMPAT_TYPES "mk_comb"
   | mk_comb(r as (Clos(_,Abs(Fv(_,Ty),_,_)), Rand)) =
       if type_of Rand = Ty then comb' r else raise INCOMPAT_TYPES "mk_comb"
-  | mk_comb(Rator,Rand) = mk_comb0 (Rator,[Rand]) 
+  | mk_comb(Rator,Rand) = mk_comb0 (Rator,[Rand])
 
 val list_mk_comb = lmk_comb (INCOMPAT_TYPES "list_mk_comb")
 end;
@@ -528,8 +537,8 @@ end;
  *        Beta-reduction. Non-renaming.                                      *
  *---------------------------------------------------------------------------*)
 
-fun abs' (Bvar, Body) = Abs(Bvar, Body, SOME (free_vars Body))
-                           
+fun abs' (Bvar, Body) = Abs(Bvar, Body, lazy_free_vars Body)
+
 fun beta_conv (Comb(Abs(_,Body,_), Bv 0, _)) = Body
   | beta_conv (Comb(Abs(_,Body,_), Rand, _)) =
      let fun subs((tm as Bv j),i)     = if i=j then Rand else tm
@@ -649,8 +658,6 @@ fun dest_comb (Comb (f,x,_)) = (f,x)
        the body.
   ---------------------------------------------------------------------------*)
 local
-    (*fun abs_removing_fv v M = Abs(v, M, SOME $ HOLset.delete(free_vars_set1 M, v))*)
-    fun abs_removing_fv v M = abs'(v, M)
   fun binder_check binder = (* expect type to be (ty1 -> ty2) -> ty3 *)
      let val (fnty,rty) = Type.dom_rng(type_of binder)
          val _ = Type.dom_rng fnty
@@ -662,12 +669,12 @@ local
      handle _ => raise ERR "list_mk_binder"
        "expected binder to have type ((ty1 -> ty2) -> ty3) where\
        \ tyvars of ty3 are all in (ty1->ty2)"
-  fun binderFn NONE = (fn v => fn (M,_) => (abs_removing_fv v M, Type.ind))
+  fun binderFn NONE = (fn v => fn (M,_) => (abs'(v,M), Type.ind))
     | binderFn (SOME binder) =
        let val (dty,rty) = binder_check binder
        in fn v => fn (M,Mty) =>
              let val theta = Type.match_type dty (type_of v --> Mty)
-             in (comb' (inst theta binder, abs_removing_fv v M),
+             in (comb' (inst theta binder, abs'(v,M)),
                  Type.type_subst theta rty)
              end
        end
