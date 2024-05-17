@@ -162,8 +162,8 @@ fun free_varsl tm_list = itlist (union o free_vars) tm_list []
 fun lazy_free_vars tm =
     case tm of
         Fv _ => SOME [tm]
-      | Comb(_, _, fvs) => !fvs
-      | Abs(_, _, fvs) => !fvs
+      | Comb(_, _, fvs) => fvs
+      | Abs(_, _, fvs) => fvs
       | Clos _ => NONE
       | _ => SOME []
 
