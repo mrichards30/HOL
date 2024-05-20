@@ -156,7 +156,7 @@ fun free_vars tm = let
               | Comb(lhs, rhs, fvs_ref) => compute_fvs_or_update_ref
                                                ts fvs_ref set
                                                (fn () => FV (lhs::rhs::ts) set)
-              | Abs(Bvar, Body, fvs_ref) => compute_fvs_or_update_ref
+              | Abs(_, Body, fvs_ref) => compute_fvs_or_update_ref
                                                 ts fvs_ref set
                                                 (fn () => FV (Body::ts) set)
               | Const _  => FV ts set
