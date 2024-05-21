@@ -187,6 +187,14 @@ fun compare (p as (t1,t2)) =
 val empty_tmset = HOLset.empty compare
 fun term_eq t1 t2 = compare(t1,t2) = EQUAL
 
+fun var_to_string (Fv(name,ty)) = let
+    val type_as_string = if Type.is_vartype ty
+                         then Type.dest_vartype ty
+                         else "%%what%%"
+in 
+    name ^ type_as_string
+end
+
 fun term_direct_eq t1 t2 =
     case (t1, t2) of
         (Fv x, Fv y) => x = y
@@ -208,15 +216,13 @@ local
             case t of
                 Fv _ => FV ts (OrderedHOLset.add(set, t))
               | Bv _ => FV ts set
-              | Comb(lhs, rhs, NONE) => FV (lhs::rhs::ts) set
-              | Comb(_, _, SOME fvs) => FV ts (OrderedHOLset.union(fvs,set))
-              | Abs(Bvar, Body, NONE) => FV (Body::ts) set
-              | Abs(_, _, SOME fvs) => FV ts (OrderedHOLset.union(fvs,set))
+              | Comb(lhs, rhs, _) => FV (lhs::rhs::ts) set
+              | Abs(Bvar, Body, _) => FV (Body::ts) set
               | Const _  => FV ts set
               | Clos _ => FV (push_clos t::ts) set
 in
-fun free_vars_set tm = FV [tm] (OrderedHOLset.empty var_compare)
-fun FVL list A = OrderedHOLset.setItems $ FV list (OrderedHOLset.fromSet A)
+fun free_vars_set tm = FV [tm] (OrderedHOLset.empty var_to_string)
+(*fun FVL list A = OrderedHOLset.setItems var_compare $ FV list (OrderedHOLset.fromSet var_to_string A)*)
 end;
 
 val free_vars = OrderedHOLset.listItems o free_vars_set
@@ -225,11 +231,18 @@ fun free_varsl tm_list = itlist (op_union term_eq o free_vars) tm_list [];
 
 fun lazy_free_vars tm =
     case tm of
-        Fv _ => SOME $ OrderedHOLset.singleton(var_compare, tm)
+        Fv _ => SOME $ OrderedHOLset.singleton(var_to_string, tm)
       | Comb(_, _, fvs) => fvs
       | Abs(_, _, fvs) => fvs
       | Clos _ => NONE
-      | _ => SOME $ OrderedHOLset.empty var_compare
+      | _ => SOME $ OrderedHOLset.empty var_to_string
+
+fun FVL [] A = A
+  | FVL ((v as Fv _)::rst) A      = FVL rst (HOLset.add(A,v))
+  | FVL (Comb(Rator,Rand,_)::rst) A = FVL (Rator::Rand::rst) A
+  | FVL (Abs(_,Body,_)::rst) A      = FVL (Body::rst) A
+  | FVL ((t as Clos _)::rst) A    = FVL (push_clos t::rst) A
+  | FVL (_::rst) A = FVL rst A
 
 (*---------------------------------------------------------------------------*
  * The free variables of a lambda term, in textual order.                    *
@@ -304,9 +317,20 @@ fun free_in tm =
      does variable v occur free in the assumptions).
  ---------------------------------------------------------------------------*)
 
-fun var_occurs M N =
+(*fun var_occurs M N =
   let val v = (case M of Fv v => v | _ => raise ERR "" "")
    in OrderedHOLset.member (free_vars_set N, M) end
+  handle HOL_ERR _ => raise ERR "var_occurs" "not a variable";*)
+
+fun var_occurs M =
+  let val v = (case M of Fv v => v | _ => raise ERR "" "")
+      fun occ (Fv u)             = (v=u)
+        | occ (Bv _)             = false
+        | occ (Const _)          = false
+        | occ (Comb(Rator,Rand,_)) = occ Rand orelse occ Rator
+        | occ (Abs(_,Body,_))      = occ Body
+        | occ (t as Clos _)      = occ (push_clos t)
+   in occ end
    handle HOL_ERR _ => raise ERR "var_occurs" "not a variable";
 
 

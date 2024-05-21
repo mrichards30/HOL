@@ -2,47 +2,58 @@ structure OrderedHOLset :> OrderedHOLset =
 struct
   open Portable
 
-  type 'a ordered_set = 'a HOLset.set * 'a list
+  type 'a ordered_set = unit HashArray.hash * 'a list ref * ('a -> string)
 
-  fun empty ordering = (HOLset.empty ordering, [])
+  fun empty hasher = (HashArray.hash 5, ref [], hasher)
 
-  fun add (original_set as (set, list), x) =
-      if HOLset.member (set, x) then original_set
-      else (HOLset.add (set, x), x::list)
+  fun member ((tbl, _, hasher), x) = Option.isSome (HashArray.sub (tbl, hasher x))
 
-  val listItems = snd
+  fun add_inplace (original_set as (tbl, list_ref, hasher), x) = let
+      val _ = HashArray.update (tbl, hasher x, ())
+  in
+      (tbl, (list_ref := x::(!list_ref); list_ref), hasher)
+  end
 
-  val setItems = fst
+  fun copy (tbl, lst, hasher) = let
+      val tbl' = HashArray.hash 5
+      val _ = HashArray.fold (fn (id, _, _) => HashArray.update (tbl', id, ())) () tbl
+      val lst' = ref (!lst)
+  in
+      (tbl', lst', hasher)
+  end
 
-  fun member ((set, _), x) = HOLset.member (set, x)
+  fun add (tbl, x) = add_inplace (copy tbl, x)
 
-  fun union (A, B) = let
-      fun insert_fv x set = add (set, x)
+  fun listItems (_, lst, _) = !lst
+
+  fun setItems compare set = HOLset.fromList compare (listItems set)
+
+  fun union_inplace (A, B) = let
+      fun insert_fv x tbl = add_inplace (tbl, x)
       val A_items = listItems A
   in
       itlist insert_fv A_items B
   end
 
-  (* Reverse append written to mirror mLibUseful's Lib.union *)
-  fun revAppend (A, B) = let
-      fun rev (set, list) = (set, List.rev list)
-      fun revAppend' (lst, S) =
-          case lst of
-              [] => S
-            | t::ts => revAppend' (ts, add(S, t))
+  fun union (A, B) = let
+      fun insert_fv x tbl = add (tbl, x)
+      val A_items = listItems A
   in
-      revAppend' (snd A, rev B)
+      itlist insert_fv A_items B
   end
 
-  fun fromSet set = (set, HOLset.listItems set)
+  fun fromSet hasher set = let
+      val tbl = HashArray.hash 5
+      val _ = HOLset.foldl (fn (x,_) => HashArray.update(tbl,hasher x,())) () set
+  in (tbl, ref (HOLset.listItems set), hasher)
+  end
 
-  fun fromList ordering list = let
-      fun toSet list =
-          case list of
-              [] => HOLset.empty ordering
-            | x::xs => HOLset.add (toSet xs, x)
-  in (toSet list, list) end;
+  fun fromList hasher list = let
+      val tbl = HashArray.hash 5
+      val _ = foldl (fn (x,_) => HashArray.update(tbl,hasher x,())) () list
+  in (tbl, ref list, hasher)
+  end
 
-  fun singleton (ordering, x) = add (empty ordering, x)
+  fun singleton (hasher, x) = add (empty hasher, x)
 
 end;
