@@ -81,6 +81,7 @@ sig
   val compare       : term * term -> order
   val term_eq       : term -> term -> bool
   val fast_term_eq  : term -> term -> bool
+  val term_direct_eq : term -> term -> bool
 
   val empty_tmset   : term set
   val empty_varset  : term set

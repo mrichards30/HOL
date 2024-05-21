@@ -41,7 +41,7 @@ datatype term = Fv of string * hol_type
               | Const of tmconst
               | Comb  of term * term * term OrderedHOLset.ordered_set option ref
               | Abs   of term * term * term OrderedHOLset.ordered_set option ref
-              | Clos  of term Subst.subs * term;
+              | Clos  of term Subst.subs * term * term OrderedHOLset.ordered_set option ref
 
 (*---------------------------------------------------------------------------
       The representation of theorems. A "tag" is a pair of the oracles
