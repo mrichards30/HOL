@@ -1,8 +1,8 @@
-structure OrderedHOLset :> OrderedHOLset =
+structure OrderedHashSet :> OrderedHashSet =
 struct
   open Portable
 
-  type 'a ordered_set = unit HashArray.hash * 'a list ref * ('a -> string)
+  type 'a hashset = unit HashArray.hash * 'a list ref * ('a -> string)
 
   fun empty hasher = (HashArray.hash 5, ref [], hasher)
 

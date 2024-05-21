@@ -17,7 +17,6 @@ open Feedback Lib Subst KernelTypes
 val kernelid = "stdknl"
 
 type 'a set = 'a HOLset.set;
-type 'a ordered_set = 'a OrderedHOLset.ordered_set;
 
 val ERR = mk_HOL_ERR "Term";
 val WARN = HOL_WARNING "Term";
@@ -187,13 +186,7 @@ fun compare (p as (t1,t2)) =
 val empty_tmset = HOLset.empty compare
 fun term_eq t1 t2 = compare(t1,t2) = EQUAL
 
-fun var_to_string (Fv(name,ty)) = let
-    val type_as_string = if Type.is_vartype ty
-                         then Type.dest_vartype ty
-                         else "%%what%%"
-in 
-    name ^ type_as_string
-end
+fun var_to_string (Fv(name,ty)) = name ^ (PolyML.makestring (Type.hash_type ty))
 
 fun term_direct_eq t1 t2 =
     case (t1, t2) of
@@ -214,28 +207,28 @@ local
             [] => set
           | t::ts =>
             case t of
-                Fv _ => FV ts (OrderedHOLset.add(set, t))
+                Fv _ => FV ts (OrderedHashSet.add(set, t))
               | Bv _ => FV ts set
               | Comb(lhs, rhs, _) => FV (lhs::rhs::ts) set
               | Abs(Bvar, Body, _) => FV (Body::ts) set
               | Const _  => FV ts set
               | Clos _ => FV (push_clos t::ts) set
 in
-fun free_vars_set tm = FV [tm] (OrderedHOLset.empty var_to_string)
-(*fun FVL list A = OrderedHOLset.setItems var_compare $ FV list (OrderedHOLset.fromSet var_to_string A)*)
+fun free_vars_set tm = FV [tm] (OrderedHashSet.empty var_to_string)
+(*fun FVL list A = OrderedHashSet.setItems var_compare $ FV list (OrderedHashSet.fromSet var_to_string A)*)
 end;
 
-val free_vars = OrderedHOLset.listItems o free_vars_set
+val free_vars = OrderedHashSet.listItems o free_vars_set
 
 fun free_varsl tm_list = itlist (op_union term_eq o free_vars) tm_list [];
 
 fun lazy_free_vars tm =
     case tm of
-        Fv _ => SOME $ OrderedHOLset.singleton(var_to_string, tm)
+        Fv _ => SOME $ OrderedHashSet.singleton(var_to_string, tm)
       | Comb(_, _, fvs) => fvs
       | Abs(_, _, fvs) => fvs
       | Clos _ => NONE
-      | _ => SOME $ OrderedHOLset.empty var_to_string
+      | _ => SOME $ OrderedHashSet.empty var_to_string
 
 fun FVL [] A = A
   | FVL ((v as Fv _)::rst) A      = FVL rst (HOLset.add(A,v))
@@ -505,7 +498,7 @@ fun comb' (M, N) = let
     fun opt >>= f = Option.mapPartial f opt
     val fvs = lazy_free_vars M
       >>= (fn M_fvs => lazy_free_vars N
-      >>= (fn N_fvs => SOME $ OrderedHOLset.union(N_fvs, M_fvs)))
+      >>= (fn N_fvs => SOME $ OrderedHashSet.union(N_fvs, M_fvs)))
 in
     Comb(M, N, fvs)
 end;
