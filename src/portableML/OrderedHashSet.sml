@@ -4,22 +4,22 @@ struct
 
   type 'a hashset = unit HashArray.hash * 'a list ref * ('a -> string)
 
-  fun empty hasher = (HashArray.hash 5, ref [], hasher)
+  fun empty hash_function = (HashArray.hash 5, ref [], hash_function)
 
-  fun member ((tbl, _, hasher), x) = Option.isSome (HashArray.sub (tbl, hasher x))
+  fun member ((tbl, _, hash_function), x) = Option.isSome (HashArray.sub (tbl, hash_function x))
 
-  fun add_inplace (original_set as (tbl, list_ref, hasher), x) = let
-      val _ = HashArray.update (tbl, hasher x, ())
+  fun add_inplace (original_set as (tbl, list_ref, hash_function), x) = let
+      val _ = HashArray.update (tbl, hash_function x, ())
   in
-      (tbl, (list_ref := x::(!list_ref); list_ref), hasher)
+      (tbl, (list_ref := x::(!list_ref); list_ref), hash_function)
   end
 
-  fun copy (tbl, lst, hasher) = let
+  fun copy (tbl, lst, hash_function) = let
       val tbl' = HashArray.hash 5
       val _ = HashArray.fold (fn (id, _, _) => HashArray.update (tbl', id, ())) () tbl
       val lst' = ref (!lst)
   in
-      (tbl', lst', hasher)
+      (tbl', lst', hash_function)
   end
 
   fun add (tbl, x) = add_inplace (copy tbl, x)
@@ -42,18 +42,18 @@ struct
       itlist insert_fv A_items B
   end
 
-  fun fromSet hasher set = let
+  fun fromSet hash_function set = let
       val tbl = HashArray.hash 5
-      val _ = HOLset.foldl (fn (x,_) => HashArray.update(tbl,hasher x,())) () set
-  in (tbl, ref (HOLset.listItems set), hasher)
+      val _ = HOLset.foldl (fn (x,_) => HashArray.update(tbl, hash_function x, ())) () set
+  in (tbl, ref (HOLset.listItems set), hash_function)
   end
 
-  fun fromList hasher list = let
+  fun fromList hash_function list = let
       val tbl = HashArray.hash 5
-      val _ = foldl (fn (x,_) => HashArray.update(tbl,hasher x,())) () list
-  in (tbl, ref list, hasher)
+      val _ = foldl (fn (x,_) => HashArray.update(tbl, hash_function x, ())) () list
+  in (tbl, ref list, hash_function)
   end
 
-  fun singleton (hasher, x) = add (empty hasher, x)
+  fun singleton (hash_function, x) = add (empty hash_function, x)
 
 end;

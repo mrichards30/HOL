@@ -137,10 +137,6 @@ in
 fun type_vars_in_term tm = tyV tm Lib.I
 end;
 
-(*---------------------------------------------------------------------------*
- * The free variables of a lambda term. Tail recursive (from Ken Larsen).    *
- *---------------------------------------------------------------------------*)
-
 fun var_compare (Fv(s1,ty1), Fv(s2,ty2)) =
        (case String.compare (s1,s2)
          of EQUAL => Type.compare (ty1,ty2)
@@ -201,6 +197,10 @@ fun term_direct_eq t1 t2 =
         subsEQ term_direct_eq (s1, s2) andalso term_direct_eq t1 t2
       | _ => false
 
+(*---------------------------------------------------------------------------*
+ * The free variables of a lambda term. Tail recursive (from Ken Larsen).    *
+ *---------------------------------------------------------------------------*)
+ 
 local
     fun FV L set =
         case L of
@@ -310,21 +310,10 @@ fun free_in tm =
      does variable v occur free in the assumptions).
  ---------------------------------------------------------------------------*)
 
-(*fun var_occurs M N =
+fun var_occurs M N =
   let val v = (case M of Fv v => v | _ => raise ERR "" "")
    in OrderedHOLset.member (free_vars_set N, M) end
-  handle HOL_ERR _ => raise ERR "var_occurs" "not a variable";*)
-
-fun var_occurs M =
-  let val v = (case M of Fv v => v | _ => raise ERR "" "")
-      fun occ (Fv u)             = (v=u)
-        | occ (Bv _)             = false
-        | occ (Const _)          = false
-        | occ (Comb(Rator,Rand,_)) = occ Rand orelse occ Rator
-        | occ (Abs(_,Body,_))      = occ Body
-        | occ (t as Clos _)      = occ (push_clos t)
-   in occ end
-   handle HOL_ERR _ => raise ERR "var_occurs" "not a variable";
+  handle HOL_ERR _ => raise ERR "var_occurs" "not a variable";
 
 
 (*---------------------------------------------------------------------------*

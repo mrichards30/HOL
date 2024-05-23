@@ -325,21 +325,22 @@ fun size acc tylist =
 
 fun type_size ty = size 0 [[ty]]
 
+(* Function to hash a HOL type by summing each component multiplied by some prime. *)
 local
-    val prime = 31
-    fun combine_hash a b = (a * prime) + b
-    fun hash_string str = List.foldl (fn (c, acc) => combine_hash (Char.ord c) acc) 0 (String.explode str)
-    fun bool_hash b = if b then 1 else 0
+    fun combine_hash a b = (a * 31) + b
+    fun hash_string str = 
+    	List.foldl (fn (c, acc) => combine_hash (Char.ord c) acc) 0 (String.explode str)
+    fun hash_bool b = if b then 1 else 0
     fun hash_kernelname {Thy, Name} = combine_hash (hash_string Thy) (hash_string Name)
     fun hash_const (id, n) = combine_hash (hash_kernelname (KernelSig.name_of_id id)) n
 in
-fun hash_type (Tyv str) = hash_string str
-  | hash_type (Tyapp (tyc, ts)) =
+fun hash_type (Tyv name) = hash_string name
+  | hash_type (Tyapp (const, ts)) =
     let
-        val tyc_hash = hash_const tyc
+        val const_hash = hash_const const
         val ts_hash = List.foldl (fn (x, acc) => combine_hash (hash_type x) acc) 0 ts
     in
-        combine_hash tyc_hash ts_hash
+        combine_hash const_hash ts_hash
     end
 end;
 
