@@ -138,10 +138,6 @@ in
 fun type_vars_in_term tm = tyV tm Lib.I
 end;
 
-(*---------------------------------------------------------------------------*
- * The free variables of a lambda term. Tail recursive (from Ken Larsen).    *
- *---------------------------------------------------------------------------*)
-
 fun var_compare (Fv(s1,ty1), Fv(s2,ty2)) =
        (case String.compare (s1,s2)
          of EQUAL => Type.compare (ty1,ty2)
@@ -202,6 +198,11 @@ fun term_direct_eq t1 t2 =
       | _ => false
 val empty_varset = HOLset.empty var_compare
 val empty_ordered_varset = OrderedHOLset.empty var_compare
+
+(*---------------------------------------------------------------------------*
+ * The free variables of a lambda term. Tail recursive (from Ken Larsen).    *
+ *---------------------------------------------------------------------------*)
+
 local
     fun FV L set =
         case L of
@@ -213,7 +214,6 @@ local
                 (case !fvs_ref of
                      NONE => (fvs_ref := SOME(FV [lhs,rhs] empty_ordered_varset); FV (t::ts) set)
                    | SOME fvs => FV ts (OrderedHOLset.union(fvs,set)))
-
 
               | Abs(Bvar, Body, fvs_ref) =>
                 (case !fvs_ref of
@@ -250,12 +250,6 @@ val lazy_free_vars' = Option.map OrderedHOLset.listItems o lazy_free_vars
  *---------------------------------------------------------------------------*)
 
 val free_vars_lr = rev o free_vars;
-
-(*---------------------------------------------------------------------------
-     Support for efficient sets of variables
- ---------------------------------------------------------------------------*)
-
-
 
 (*---------------------------------------------------------------------------*
  * The set of all variables in a term, represented as a list.                *
