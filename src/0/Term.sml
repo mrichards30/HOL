@@ -138,15 +138,13 @@ in
 fun type_vars_in_term tm = tyV tm Lib.I
 end;
 
-(*---------------------------------------------------------------------------*
- * The free variables of a lambda term. Tail recursive (from Ken Larsen).    *
- *---------------------------------------------------------------------------*)
-
 fun var_compare (Fv(s1,ty1), Fv(s2,ty2)) =
        (case String.compare (s1,s2)
          of EQUAL => Type.compare (ty1,ty2)
           | x => x)
   | var_compare _ = raise ERR "var_compare" "variables required";
+  
+val empty_varset = HOLset.empty var_compare
 
 (* ----------------------------------------------------------------------
     A total ordering on terms that respects alpha equivalence.
@@ -200,6 +198,10 @@ fun term_direct_eq t1 t2 =
         subsEQ term_direct_eq (s1, s2) andalso term_direct_eq t1 t2
       | _ => false
 
+(*---------------------------------------------------------------------------*
+ * The free variables of a lambda term. Tail recursive (from Ken Larsen).    *
+ *---------------------------------------------------------------------------*)
+ 
 local
     fun FV L set =
         case L of
@@ -236,12 +238,6 @@ fun lazy_free_vars tm =
  *---------------------------------------------------------------------------*)
 
 val free_vars_lr = rev o free_vars;
-
-(*---------------------------------------------------------------------------
-     Support for efficient sets of variables
- ---------------------------------------------------------------------------*)
-
-val empty_varset = HOLset.empty var_compare
 
 (*---------------------------------------------------------------------------*
  * The set of all variables in a term, represented as a list.                *
