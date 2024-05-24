@@ -184,7 +184,7 @@ val empty_tmset = HOLset.empty compare
 fun term_eq t1 t2 = compare(t1,t2) = EQUAL
 
 fun term_direct_eq t1 t2 =
-    fast_term_eq t1 t2 orelse 
+    fast_term_eq t1 t2 orelse
     case (t1, t2) of
         (Fv x, Fv y) => x = y
       | (Bv i, Bv j) => i = j
