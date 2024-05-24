@@ -328,8 +328,8 @@ fun type_size ty = size 0 [[ty]]
 (* Function to hash a HOL type by summing each component multiplied by some prime. *)
 local
     fun combine_hash a b = (a * 31) + b
-    fun hash_string str = 
-    	List.foldl (fn (c, acc) => combine_hash (Char.ord c) acc) 0 (String.explode str)
+    fun hash_string str =
+        List.foldl (fn (c, acc) => combine_hash (Char.ord c) acc) 0 (String.explode str)
     fun hash_bool b = if b then 1 else 0
     fun hash_kernelname {Thy, Name} = combine_hash (hash_string Thy) (hash_string Name)
     fun hash_const (id, n) = combine_hash (hash_kernelname (KernelSig.name_of_id id)) n

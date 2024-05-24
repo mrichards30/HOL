@@ -28,6 +28,7 @@ struct
 
   fun setItems compare set = HOLset.fromList compare (listItems set)
 
+  (* Adds every element from A into B *)
   fun union_inplace (A, B) = let
       fun insert_fv x tbl = add_inplace (tbl, x)
       val A_items = listItems A
@@ -35,11 +36,15 @@ struct
       itlist insert_fv A_items B
   end
 
-  fun union (A, B) = let
-      fun insert_fv x tbl = add (tbl, x)
-      val A_items = listItems A
+  (* Adds every element of A and B into a new ordered hash set *)
+  fun union (A as (_,A_items_ref,hash_function), B) = let
+      fun insert_fv x tbl = add_inplace (tbl, x)
+      val tbl' = empty hash_function
+      val B_items = listItems B
+      val _ = itlist insert_fv (!A_items_ref) tbl'
+      val _ = itlist insert_fv B_items tbl'
   in
-      itlist insert_fv A_items B
+      tbl'
   end
 
   fun fromSet hash_function set = let
@@ -54,6 +59,6 @@ struct
   in (tbl, ref list, hash_function)
   end
 
-  fun singleton (hash_function, x) = add (empty hash_function, x)
+  fun singleton (hash_function, x) = add_inplace (empty hash_function, x)
 
 end;

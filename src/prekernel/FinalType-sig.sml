@@ -65,5 +65,5 @@ sig
  val uptodate_kname : KernelSig.kernelname -> bool
 
  val hash_type : hol_type -> int
-                                 
+
 end

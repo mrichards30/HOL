@@ -182,7 +182,7 @@ fun compare (p as (t1,t2)) =
 val empty_tmset = HOLset.empty compare
 fun term_eq t1 t2 = compare(t1,t2) = EQUAL
 
-fun var_to_string (Fv(name,ty)) = name ^ (PolyML.makestring (Type.hash_type ty))
+fun var_to_string (Fv(name, ty)) = name ^ (Int.toString (Type.hash_type ty))
 
 fun term_direct_eq t1 t2 =
     case (t1, t2) of
@@ -200,22 +200,25 @@ fun term_direct_eq t1 t2 =
 (*---------------------------------------------------------------------------*
  * The free variables of a lambda term. Tail recursive (from Ken Larsen).    *
  *---------------------------------------------------------------------------*)
- 
+
 local
     fun FV L set =
         case L of
             [] => set
           | t::ts =>
             case t of
-                Fv _ => FV ts (OrderedHashSet.add(set, t))
+                Fv _ => FV ts (OrderedHashSet.add_inplace(set, t))
               | Bv _ => FV ts set
-              | Comb(lhs, rhs, _) => FV (lhs::rhs::ts) set
-              | Abs(Bvar, Body, _) => FV (Body::ts) set
+              | Comb(lhs, rhs, NONE) => FV (lhs::rhs::ts) set
+              | Comb(_, _, SOME fvs) => FV ts (OrderedHashSet.union_inplace(fvs,set))
+              | Abs(Bvar, Body, NONE) => FV (Body::ts) set
+              | Abs(_, _, SOME fvs) => FV ts (OrderedHashSet.union_inplace(fvs,set))
               | Const _  => FV ts set
               | Clos _ => FV (push_clos t::ts) set
 in
 fun free_vars_set tm = FV [tm] (OrderedHashSet.empty var_to_string)
-(*fun FVL list A = OrderedHashSet.setItems var_compare $ FV list (OrderedHashSet.fromSet var_to_string A)*)
+fun FVL list A = OrderedHashSet.setItems var_compare $ FV list
+                                         (OrderedHashSet.fromSet var_to_string A)
 end;
 
 val free_vars = OrderedHashSet.listItems o free_vars_set
@@ -312,7 +315,7 @@ fun free_in tm =
 
 fun var_occurs M N =
   let val v = (case M of Fv v => v | _ => raise ERR "" "")
-   in OrderedHOLset.member (free_vars_set N, M) end
+   in OrderedHashSet.member (free_vars_set N, M) end
   handle HOL_ERR _ => raise ERR "var_occurs" "not a variable";
 
 
