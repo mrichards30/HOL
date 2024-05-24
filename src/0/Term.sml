@@ -233,13 +233,6 @@ fun lazy_free_vars tm =
       | Clos _ => NONE
       | _ => SOME $ OrderedHashSet.empty var_to_string
 
-fun FVL [] A = A
-  | FVL ((v as Fv _)::rst) A      = FVL rst (HOLset.add(A,v))
-  | FVL (Comb(Rator,Rand,_)::rst) A = FVL (Rator::Rand::rst) A
-  | FVL (Abs(_,Body,_)::rst) A      = FVL (Body::rst) A
-  | FVL ((t as Clos _)::rst) A    = FVL (push_clos t::rst) A
-  | FVL (_::rst) A = FVL rst A
-
 (*---------------------------------------------------------------------------*
  * The free variables of a lambda term, in textual order.                    *
  *---------------------------------------------------------------------------*)
