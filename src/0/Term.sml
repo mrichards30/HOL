@@ -143,7 +143,7 @@ fun var_compare (Fv(s1,ty1), Fv(s2,ty2)) =
          of EQUAL => Type.compare (ty1,ty2)
           | x => x)
   | var_compare _ = raise ERR "var_compare" "variables required";
-  
+
 val empty_varset = HOLset.empty var_compare
 
 (* ----------------------------------------------------------------------
@@ -201,7 +201,7 @@ fun term_direct_eq t1 t2 =
 (*---------------------------------------------------------------------------*
  * The free variables of a lambda term. Tail recursive (from Ken Larsen).    *
  *---------------------------------------------------------------------------*)
- 
+
 local
     fun FV L set =
         case L of
