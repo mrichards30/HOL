@@ -13,16 +13,13 @@ val _ = new_theory "polyFieldModulo";
 
 (* ------------------------------------------------------------------------- *)
 
-
 (* val _ = load "jcLib"; *)
 open jcLib;
 
-(* Get dependent theories local *)
-(* (* val _ = load "polyWeakTheory"; *) *)
-(* (* val _ = load "polyRingTheory"; *) *)
-(* (* val _ = load "polyFieldTheory"; *) *)
-(* (* val _ = load "polyFieldDivisionTheory"; *) *)
-(* val _ = load "polyRingModuloTheory"; *)
+(* open dependent theories *)
+open pred_setTheory listTheory arithmeticTheory numberTheory combinatoricsTheory
+     dividesTheory gcdTheory;
+
 open polynomialTheory polyWeakTheory polyRingTheory polyFieldTheory;
 open polyDivisionTheory polyFieldDivisionTheory;
 open polyModuloRingTheory polyRingModuloTheory;
@@ -30,42 +27,18 @@ open polyDividesTheory;
 open polyEvalTheory;
 open polyBinomialTheory;
 
-(* val _ = load "polyIrreducibleTheory"; *)
 open polyIrreducibleTheory;
 open polyRootTheory;
 open polyMonicTheory;
 
-(* val _ = load "polyProductTheory"; *)
 open polyProductTheory;
 
-open monoidTheory groupTheory ringTheory integralDomainTheory fieldTheory;
-open monoidOrderTheory groupOrderTheory;
-open subgroupTheory;
+open monoidTheory groupTheory ringTheory fieldTheory;
 
-(* val _ = load "fieldMapTheory"; *)
-open monoidMapTheory groupMapTheory ringMapTheory fieldMapTheory;
+open fieldMapTheory;
+open fieldIdealTheory;
 
-(* (* val _ = load "ringDividesTheory"; *) *)
-open ringDividesTheory ringUnitTheory;
-
-(* (* val _ = load "ringIdealTheory"; *) *)
-(* (* val _ = load "fieldIdealTheory"; *) *)
-open ringIdealTheory fieldIdealTheory;
-(* for EuclideanRing_def, quotient_field_by_maximal_ideal *)
-
-(* open dependent theories *)
-open pred_setTheory listTheory arithmeticTheory;
-
-(* Get dependent theories in lib *)
-(* (* val _ = load "helperNumTheory"; -- in monoidTheory *) *)
-(* (* val _ = load "helperSetTheory"; -- in monoidTheory *) *)
-(* val _ = load "helperFunctionTheory"; *)
-open helperNumTheory helperSetTheory helperListTheory helperFunctionTheory;
-
-(* (* val _ = load "dividesTheory"; -- in helperNumTheory *) *)
-(* (* val _ = load "gcdTheory"; -- in helperNumTheory *) *)
-open dividesTheory gcdTheory;
-
+val _ = intLib.deprecate_int ();
 
 (* ------------------------------------------------------------------------- *)
 (* Field Polynomial Modulo Documentation                                     *)

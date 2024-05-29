@@ -12,43 +12,16 @@ val _ = new_theory "polyDivision";
 
 (* ------------------------------------------------------------------------- *)
 
-
-
 (* val _ = load "jcLib"; *)
 open jcLib;
 
 (* open dependent theories *)
-open pred_setTheory listTheory arithmeticTheory;
-(* Get dependent theories local *)
-(* (* val _ = load "monoidTheory"; *) *)
-(* (* val _ = load "groupTheory"; *) *)
-(* (* val _ = load "ringTheory"; *) *)
-(* val _ = load "ringUnitTheory"; *)
-open monoidTheory groupTheory ringTheory ringUnitTheory;
+open pred_setTheory listTheory arithmeticTheory numberTheory combinatoricsTheory
+     dividesTheory gcdTheory;
 
-(* Get dependent theories in lib *)
-(* (* val _ = load "helperNumTheory"; -- in monoidTheory *) *)
-(* (* val _ = load "helperSetTheory"; -- in monoidTheory *) *)
-(* val _ = load "helperListTheory"; *)
-(* val _ = load "helperFunctionTheory"; *)
-open helperNumTheory helperSetTheory helperListTheory helperFunctionTheory;
+open monoidTheory groupTheory ringTheory;
 
-(* (* val _ = load "dividesTheory"; -- in helperNumTheory *) *)
-(* (* val _ = load "gcdTheory"; -- in helperNumTheory *) *)
-open dividesTheory gcdTheory;
-
-(* (* val _ = load "ringIdealTheory"; *) *)
-(* val _ = load "quotientRingTheory"; *)
-open ringIdealTheory quotientRingTheory;
-open subgroupTheory;
-open quotientGroupTheory;
-
-open monoidMapTheory groupMapTheory ringMapTheory;
-
-(* (* val _ = load "polyWeakTheory"; *) *)
-(* val _ = load "polyRingTheory"; *)
 open polynomialTheory polyWeakTheory polyRingTheory;
-
 
 (* ------------------------------------------------------------------------- *)
 (* Polynomials Division over a Ring R[x] Documentation                       *)

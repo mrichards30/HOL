@@ -9,11 +9,14 @@
 open HolKernel Parse boolLib bossLib arithmeticTheory realTheory
      seqTheory pred_setTheory res_quanTheory res_quanTools listTheory transcTheory
      rich_listTheory pairTheory combinTheory realLib optionTheory
-     real_sigmaTheory iterateTheory;
+     real_sigmaTheory iterateTheory real_of_ratTheory;
 
 open hurdUtils util_probTheory sigma_algebraTheory real_borelTheory;
 
 val _ = new_theory "real_measure";
+
+val _ = intLib.deprecate_int ();
+val _ = ratLib.deprecate_rat ();
 
 (* ------------------------------------------------------------------------- *)
 (* Basic measure theory definitions.                                         *)
@@ -1616,7 +1619,7 @@ Proof
        INST_TYPE [beta |-> ``:num``] o
        Q.SPECL [`m`, `BIGUNION (IMAGE f UNIV)`, `\x. num_CASE x {} f`])
       MEASURE_COUNTABLE_INCREASING
- >> Cond
+ >> impl_tac
  >- (RW_TAC std_ss [IN_FUNSET, IN_UNIV, num_case_def, measure_space_def] >|
      [ (* goal 1 *)
        Cases_on `x` >|

@@ -12,15 +12,14 @@ val _ = new_theory "ffExtend";
 
 (* ------------------------------------------------------------------------- *)
 
-
-
 (* val _ = load "jcLib"; *)
 open jcLib;
 
-(* val _ = load "SatisfySimps"; (* for SatisfySimps.SATISFY_ss *) *)
+(* open dependent theories *)
+open pred_setTheory listTheory arithmeticTheory dividesTheory gcdTheory
+     gcdsetTheory numberTheory combinatoricsTheory cardinalTheory;
 
 (* Get dependent theories local *)
-(* val _ = load "ffExistTheory"; *)
 open ffBasicTheory;
 open ffAdvancedTheory;
 open ffPolyTheory;
@@ -28,43 +27,12 @@ open ffMinimalTheory;
 open ffConjugateTheory;
 open ffExistTheory;
 
-(* Get dependent theories in lib *)
-(* (* val _ = load "helperNumTheory"; -- in monoidTheory *) *)
-(* (* val _ = load "helperSetTheory"; -- in monoidTheory *) *)
-open helperNumTheory helperListTheory helperSetTheory;
-
-(* open dependent theories *)
-open pred_setTheory listTheory arithmeticTheory;
-(* (* val _ = load "dividesTheory"; -- in helperNumTheory *) *)
-(* (* val _ = load "gcdTheory"; -- in helperNumTheory *) *)
-open dividesTheory gcdTheory;
-
-(* (* val _ = load "fieldTheory"; *) *)
-(* (* val _ = load "ringUnitTheory"; *) *)
 open monoidTheory groupTheory ringTheory fieldTheory;
-open subgroupTheory;
-open ringUnitTheory;
-open groupOrderTheory;
-open monoidMapTheory groupMapTheory ringMapTheory fieldMapTheory;
+open fieldMapTheory;
 
-(* (* val _ = load "ringBinomialTheory"; *) *)
-open ringBinomialTheory;
-
-(* (* val _ = load "groupCyclicTheory"; *) *)
-open groupCyclicTheory;
-
-(* (* val _ = load "fieldInstancesTheory"; *) *)
-open monoidInstancesTheory;
-open groupInstancesTheory;
-open ringInstancesTheory;
 open fieldInstancesTheory;
 
-(* (* val _ = load "quotientRingTheory"; *) *)
-open quotientRingTheory;
-open quotientGroupTheory;
-
 (* Get polynomial theory of Ring *)
-(* (* val _ = load "polyMapTheory"; *) *)
 open polynomialTheory polyWeakTheory polyRingTheory polyDivisionTheory polyBinomialTheory;
 open polyMonicTheory;
 open polyDividesTheory;
@@ -78,10 +46,6 @@ open polyFieldModuloTheory;
 open polyRingModuloTheory;
 open polyModuloRingTheory;
 open polyMapTheory;
-
-(* val _ = load "cardinalTheory"; *)
-open cardinalTheory; (* for helpers: INJ_FINITE_INFINITE *)
-
 
 (* ------------------------------------------------------------------------- *)
 (* Field Extension Documentation                                             *)

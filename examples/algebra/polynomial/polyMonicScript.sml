@@ -12,43 +12,21 @@ val _ = new_theory "polyMonic";
 
 (* ------------------------------------------------------------------------- *)
 
-
 (* val _ = load "jcLib"; *)
 open jcLib;
 
-(* Get dependent theories local *)
-(* (* val _ = load "monoidTheory"; *) *)
-(* (* val _ = load "groupTheory"; *) *)
-(* (* val _ = load "ringTheory"; *) *)
-(* val _ = load "ringUnitTheory"; *)
-open monoidTheory groupTheory ringTheory ringUnitTheory;
+(* open dependent theories *)
+open pred_setTheory listTheory arithmeticTheory numberTheory combinatoricsTheory
+     rich_listTheory dividesTheory gcdTheory;
 
-(* (* val _ = load "integralDomainTheory"; *) *)
-(* (* val _ = load "fieldTheory"; *) *)
+open monoidTheory groupTheory ringTheory fieldTheory;
 
-(* Get polynomial theory of Ring *)
-(* (* val _ = load "polyWeakTheory"; *) *)
-(* val _ = load "polyDivisionTheory"; *)
 open polynomialTheory polyWeakTheory polyRingTheory;
 open polyDivisionTheory; (* for ulead, pmonic and poly_mod theorems. *)
 
-(* val _ = load "polyFieldTheory"; *)
 open polyFieldTheory;
-open fieldTheory;
 
-(* open dependent theories *)
-open pred_setTheory listTheory arithmeticTheory;
-
-(* Get dependent theories in lib *)
-(* (* val _ = load "helperNumTheory"; -- in monoidTheory *) *)
-(* (* val _ = load "helperSetTheory"; -- in monoidTheory *) *)
-open helperNumTheory helperSetTheory helperListTheory;
-open rich_listTheory; (* for NOT_SNOC_NIL *)
-
-(* (* val _ = load "dividesTheory"; -- in helperNumTheory *) *)
-(* (* val _ = load "gcdTheory"; -- in helperNumTheory *) *)
-open dividesTheory gcdTheory;
-
+val _ = intLib.deprecate_int ();
 
 (* ------------------------------------------------------------------------- *)
 (* Monic Polynomial Documentation                                            *)

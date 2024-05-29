@@ -12,47 +12,31 @@ val _ = new_theory "twoSquares";
 
 (* ------------------------------------------------------------------------- *)
 
-
-(* open dependent theories *)
-(* arithmeticTheory -- load by default *)
-
 (* val _ = load "windmillTheory"; *)
 open helperTwosqTheory;
-open helperNumTheory;
-open helperSetTheory;
-open helperFunctionTheory;
-open arithmeticTheory pred_setTheory;
-open dividesTheory; (* for divides_def, prime_def *)
-open logPowerTheory; (* for prime_non_square *)
+
+open arithmeticTheory pred_setTheory dividesTheory numberTheory gcdsetTheory
+     pairTheory listTheory rich_listTheory listRangeTheory combinatoricsTheory
+     primeTheory;
 
 open windmillTheory;
 
-(* val _ = load "involuteFixTheory"; *)
 open involuteTheory; (* for involute_bij *)
 open involuteFixTheory;
 
-(* val _ = load "iterateComposeTheory"; *)
 open iterationTheory;
 open iterateComposeTheory;
 
-(* val _ = load "iterateComputeTheory"; *)
 open iterateComputeTheory;
 
-(* for later computation *)
-open listTheory;
-open rich_listTheory; (* for MAP_REVERSE *)
-open helperListTheory; (* for listRangeINC_LEN *)
-open listRangeTheory; (* for listRangeINC_CONS *)
-
-(* for group action *)
-(* val _ = load "involuteActionTheory"; *)
 open involuteActionTheory;
-open groupActionTheory;
-open groupInstancesTheory;
+open groupTheory;
 
-(* for pairs *)
-open pairTheory; (* for ELIM_UNCURRY, PAIR_FST_SND_EQ, PAIR_EQ, FORALL_PROD *)
+val _ = intLib.deprecate_int ();
 
+val _ = temp_overload_on("SQ", ``\n. n * (n :num)``);
+val _ = temp_overload_on("HALF", ``\n. n DIV 2``);
+val _ = temp_overload_on("TWICE", ``\n. 2 * (n :num)``);
 
 (* ------------------------------------------------------------------------- *)
 (* Windmills of the minds Documentation                                      *)

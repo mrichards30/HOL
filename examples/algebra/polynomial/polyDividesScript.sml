@@ -12,55 +12,23 @@ val _ = new_theory "polyDivides";
 
 (* ------------------------------------------------------------------------- *)
 
-
 (* val _ = load "jcLib"; *)
 open jcLib;
 
-(* Get dependent theories local *)
-(* (* val _ = load "monoidTheory"; *) *)
-(* (* val _ = load "groupTheory"; *) *)
-(* (* val _ = load "ringTheory"; *) *)
-(* val _ = load "ringUnitTheory"; (* this overloads |/ as r*.inv *) *)
-(* (* val _ = load "integralDomainTheory"; *) *)
-(* val _ = load "fieldTheory"; (* see poly_roots_mult, this overload |/ as (r.prod excluding #0).inv *) *)
-open monoidTheory groupTheory ringTheory ringUnitTheory fieldTheory;
+(* open dependent theories *)
+open pred_setTheory listTheory arithmeticTheory numberTheory dividesTheory;
 
-open subgroupTheory;
-open monoidOrderTheory groupOrderTheory;
+open monoidTheory groupTheory ringTheory fieldTheory;
 
-(* (* val _ = load "polyWeakTheory"; *) *)
-(* (* val _ = load "polyRingTheory"; *) *)
-(* val _ = load "polyDivisionTheory"; *)
 open polynomialTheory polyWeakTheory polyRingTheory polyDivisionTheory;
 
-(* val _ = load "polyRootTheory"; *)
 open polyRootTheory;
 open polyMonicTheory;
-
-(* val _ = load "polyFieldDivisionTheory"; *)
 open polyFieldTheory;
 open polyFieldDivisionTheory;
-
-(* val _ = load "ringDividesTheory"; *)
-open ringDividesTheory;
-
-(* val _ = load "polyEvalTheory"; *)
 open polyEvalTheory;
 
-(* open dependent theories *)
-open pred_setTheory listTheory arithmeticTheory;
-
-(* Get dependent theories in lib *)
-(* (* val _ = load "helperNumTheory"; -- in monoidTheory *) *)
-(* (* val _ = load "helperSetTheory"; -- in monoidTheory *) *)
-(* val _ = load "helperListTheory"; *)
-(* val _ = load "helperFunctionTheory"; *)
-open helperNumTheory helperSetTheory helperListTheory helperFunctionTheory;
-
-(* (* val _ = load "dividesTheory"; -- in helperNumTheory *) *)
-(* (* val _ = load "gcdTheory"; -- in helperNumTheory *) *)
-open dividesTheory;
-
+val _ = intLib.deprecate_int ();
 
 (* ------------------------------------------------------------------------- *)
 (* Divisibility of Polynomials Documentation                                 *)
@@ -2528,7 +2496,6 @@ val poly_monic_divides_one = store_thm(
     metis_tac[poly_monic_deg_0],
     rw[poly_divides_reflexive]
   ]);
-
 
 (* ------------------------------------------------------------------------- *)
 

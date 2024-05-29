@@ -12,50 +12,20 @@ val _ = new_theory "ffMaster";
 
 (* ------------------------------------------------------------------------- *)
 
-
-
 (* val _ = load "jcLib"; *)
 open jcLib;
 
-(* val _ = load "SatisfySimps"; (* for SatisfySimps.SATISFY_ss *) *)
+(* open dependent theories *)
+open arithmeticTheory pred_setTheory listTheory dividesTheory gcdTheory
+     gcdsetTheory numberTheory combinatoricsTheory primeTheory;
 
-(* Loading theories *)
-(* (* val _ = load "ffCycloTheory"; *) *)
-(* val _ = load "ffPolyTheory"; *)
 open ffBasicTheory;
 open ffAdvancedTheory;
 open ffPolyTheory;
 
-(* Open theories in order *)
-
-(* open dependent theories *)
-open arithmeticTheory pred_setTheory listTheory;
-(* (* val _ = load "dividesTheory"; -- in helperNumTheory *) *)
-(* (* val _ = load "gcdTheory"; -- in helperNumTheory *) *)
-open dividesTheory gcdTheory;
-
-(* Get dependent theories in lib *)
-(* (* val _ = load "helperNumTheory"; -- in monoidTheory *) *)
-(* (* val _ = load "helperSetTheory"; -- in monoidTheory *) *)
-(* (* val _ = load "helperFunctionTheory"; -- in ringTheory *) *)
-(* (* val _ = load "helperListTheory"; -- in polyRingTheory *) *)
-open helperNumTheory helperSetTheory helperListTheory helperFunctionTheory;
-
-(* Get dependent theories local *)
-(* (* val _ = load "groupInstancesTheory"; -- in ringInstancesTheory *) *)
-(* (* val _ = load "ringInstancesTheory"; *) *)
-(* (* val _ = load "fieldInstancesTheory"; *) *)
 open monoidTheory groupTheory ringTheory fieldTheory;
-open monoidOrderTheory groupOrderTheory;
-open subgroupTheory;
 
-open groupInstancesTheory ringInstancesTheory fieldInstancesTheory;
-open groupCyclicTheory;
-
-open ringBinomialTheory;
-open ringDividesTheory;
-open ringIdealTheory;
-open ringUnitTheory;
+open fieldInstancesTheory;
 
 (* Get polynomial theory of Ring *)
 open polynomialTheory polyWeakTheory polyRingTheory polyDivisionTheory polyBinomialTheory;
@@ -71,23 +41,16 @@ open polyDividesTheory;
 open polyGCDTheory;
 open polyIrreducibleTheory;
 
-(* (* val _ = load "polyMapTheory"; *) *)
-open monoidMapTheory groupMapTheory ringMapTheory fieldMapTheory;
+open fieldMapTheory;
 open polyMapTheory;
 
 open polyDerivativeTheory;
 open polyEvalTheory;
 open polyRootTheory;
-open binomialTheory;
 
-open GaussTheory;
-open EulerTheory;
-
-(* val _ = load "fieldBinomialTheory"; *)
 open fieldBinomialTheory; (* for finite_field_freshman_all *)
 
-(* (* val _ = load "MobiusTheory"; *) *)
-
+val _ = intLib.deprecate_int ();
 
 (* ------------------------------------------------------------------------- *)
 (* Finite Field Master Polynomial Documentation                              *)
